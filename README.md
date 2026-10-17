@@ -45,9 +45,19 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 
 ## 📸 Screenshots
 
-> **🚧 Screenshots coming soon.** This section is a placeholder. Real screenshots of the main window, Studio Sound and the OBS panel will be added here.
+*Rendered from the actual StreamWave UI with a demo project.*
 
-<!-- SCREENSHOTS: add assets/screenshot-main.png, assets/screenshot-studio.png, assets/screenshot-obs.png -->
+**The main window** — recording while OBS records the stream. The OBS take comes back as separate mic / desktop / Discord tracks, scene changes land as markers, and the armed **30 s pre-record buffer** means you can hit *Save last 30 s* when you said something great before pressing record.
+
+![StreamWave main window while recording: live meters, pre-record buffer armed, three imported OBS tracks with waveforms, scene markers and an active selection](assets/screenshot-main.png)
+
+**✨ Studio Sound** — one click analyses the voice (noise floor, sibilance, plosives, room echo, loudness) and builds a fully editable chain: learned noise reduction, voice-curve EQ, de-esser, compressor and peak-safe **-16 LUFS** loudness. Tap A/B to compare before and after — live, while it plays.
+
+![Studio Sound after its analysis, with the editable effect chain it built: noise reduction, equalizer, de-esser, compressor, loudness and limiter](assets/screenshot-studio.png)
+
+**OBS sync** — locked to OBS over obs-websocket: record / pause / stop together, auto-import each audio track the moment OBS stops, and **Send back to video** drops your cleaned-up audio into a copy of the video without re-encoding the picture.
+
+![OBS panel while connected and recording in sync, with Follow OBS and auto-import enabled](assets/screenshot-obs.png)
 
 ## ⬇ Install
 
