@@ -3,7 +3,7 @@
   import { getVersion } from "@tauri-apps/api/app";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import logoUrl from "../assets/logo-256.png";
-  import { AUTHOR, DONATE_URL, REPO_URL } from "./about";
+  import { AUTHOR, COFFEE_URL, PAYPAL_URL, REPO_URL, type AllowedLink } from "./about";
   let { onclose }: { onclose: () => void } = $props();
   let version = $state("");
   let err = $state<string | null>(null);
@@ -13,7 +13,7 @@
     window.addEventListener("keydown", k, true);
     return () => window.removeEventListener("keydown", k, true);
   });
-  async function go(url: typeof DONATE_URL | typeof REPO_URL) {
+  async function go(url: AllowedLink) {
     err = null;
     try { await openUrl(url); } catch (e) { err = `Couldn't open the browser: ${e}`; }
   }
@@ -24,7 +24,8 @@
     <h2 id="about-title">StreamWave</h2>
     <div class="ver">Version {version || "…"}</div>
     <div class="by">Created by <b>{AUTHOR}</b></div>
-    <button class="coffee" onclick={() => go(DONATE_URL)}>☕ Buy me a coffee</button>
+    <button class="coffee" onclick={() => go(COFFEE_URL)}>☕ Buy me a coffee</button>
+    <button class="paypal" onclick={() => go(PAYPAL_URL)}>Donate via PayPal</button>
     <button class="link" onclick={() => go(REPO_URL)}>GitHub: postmanpat-303/StreamWave ↗</button>
     {#if err}<div class="err">{err}</div>{/if}
     <div class="legal">
@@ -43,6 +44,8 @@
   .by { margin: 4px 0 10px; }
   .coffee { width: 100%; padding: 12px 18px; font-size: 16px; font-weight: 700; border: 0; border-radius: 999px; background: linear-gradient(90deg, #ffb347, #ff7a1a); color: #1a0f05; cursor: pointer; box-shadow: 0 6px 24px rgba(255,122,26,.4); }
   .coffee:hover { filter: brightness(1.08); }
+  .paypal { padding: 6px 14px; font-size: 12.5px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
+  .paypal:hover { color: var(--accent); border-color: var(--accent); }
   .link { background: transparent; border: 0; color: var(--accent); cursor: pointer; }
   .legal { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 8px; text-align: left; }
   .legal p { margin: 6px 0; }

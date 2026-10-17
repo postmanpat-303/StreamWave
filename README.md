@@ -8,7 +8,7 @@
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-2ec4d6">
   <img alt="Built with Tauri 2 and Rust" src="https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20Rust-ffb347">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-green"></a>
-  <a href="https://paypal.me/derekh100"><img alt="Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95%20buy%20me%20a%20coffee-PayPal-ff7a1a"></a>
+  <a href="https://buymeacoffee.com/postmanpat"><img alt="Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95%20buy%20me%20a%20coffee-postmanpat-ff7a1a"></a>
 </p>
 
 <p align="center">
@@ -25,7 +25,8 @@
 </p>
 
 <p align="center">
-  <a href="https://paypal.me/derekh100"><img alt="☕ Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95_Buy_me_a_coffee-paypal.me%2Fderekh100-ff7a1a?style=for-the-badge"></a>
+  <a href="https://buymeacoffee.com/postmanpat"><img alt="☕ Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95_Buy_me_a_coffee-postmanpat-ff7a1a?style=for-the-badge"></a>
+  <a href="https://paypal.me/derekh100"><img alt="Donate via PayPal" src="https://img.shields.io/badge/Donate-PayPal-0070ba?style=flat-square&logo=paypal"></a>
 </p>
 
 ---
@@ -136,7 +137,7 @@ Yes, MIT-licensed, no accounts, no telemetry, everything runs locally.
 
 ## ☕ Support
 
-StreamWave is free and built in spare time by **Derek Heasley**. If it saves you time on stream, you can [**buy me a coffee**](https://paypal.me/derekh100). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
+StreamWave is free and built in spare time by **Derek Heasley**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
 
 ## 📄 Licence
 

@@ -2,6 +2,13 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.5.4 (2026-10-17)
+### Changed
+- **☕ Buy me a coffee** (About screen, README, website, GitHub Sponsors button) now opens Buy Me a Coffee: https://buymeacoffee.com/postmanpat.
+- PayPal (https://paypal.me/derekh100) stays as a smaller secondary **Donate via PayPal** button.
+- The app's link allowlist is now exactly these three URLs: Buy Me a Coffee, PayPal and the GitHub repo.
+- Windows installer built from the fixed 0.5.3 template, so upgrades from any 0.5.x work.
+
 ## 0.5.3 (2026-10-17)
 ### Fixed
 - **Windows upgrade from 0.5.0 failed with "Error launching installer".** When upgrading, the installer finds the old version's folder and runs its uninstaller as `uninstall.exe _?=<folder>`. It only looked for that folder under `HKCU\Software\<publisher>\StreamWave`. 0.5.0 was published as "Del" and 0.5.1+ as "Derek Heasley", so the lookup came back empty and the old uninstaller was started with `_?=` and no folder.
