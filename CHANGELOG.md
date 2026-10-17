@@ -2,6 +2,19 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.6.0 (2026-10-17)
+### Added
+- **In-app updates.** Use **Help → Check for updates…** or the button in About. StreamWave reads the latest GitHub release.
+  - If a newer version exists, it shows the installed and new versions and the release notes (rendered safely, with links shown as text).
+  - It offers **Download & install**, **Not now** and **Skip this version**.
+  - Downloads show progress and are verified against the app's built-in signing key. On Windows the installer runs passively and reopens StreamWave. The AppImage offers **Restart now**.
+  - Installing is blocked while recording, and you're warned about unsaved changes.
+  - If you're up to date you get a friendly confirmation. If you're offline or the check fails, you get a calm message and nothing breaks.
+- **Quiet startup check** (Settings → "Check for updates at startup", on by default). It runs at most once a day, stays silent unless there's an update, and respects "Skip this version". A later version is offered again.
+- Uses Tauri's updater and process plugins. Release assets now include `.sig` files and `latest.json`.
+### Notes
+- 0.5.x has no updater, so install 0.6.0 by hand once. Later versions can be installed from inside the app.
+
 ## 0.5.4 (2026-10-17)
 ### Changed
 - **☕ Buy me a coffee** (About screen, README, website, GitHub Sponsors button) now opens Buy Me a Coffee: https://buymeacoffee.com/postmanpat.

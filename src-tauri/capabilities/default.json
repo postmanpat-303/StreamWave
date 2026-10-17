@@ -22,6 +22,8 @@
           "url": "https://github.com/postmanpat-303/StreamWave"
         }
       ]
-    }
+    },
+    "updater:default",
+    "process:allow-restart"
   ]
 }

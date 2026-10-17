@@ -11,7 +11,8 @@ export interface MicReport { issues: ("Clipping" | "TooQuiet" | "Silence" | "DcO
 export interface Analysis { noise_floor_db: number; speech_level_db: number; snr_db: number; lufs: number | null; balance_db: number[]; sibilance_db: number; plosives: number; reverb_ms: number; notes: string[]; }
 export interface SplitTrack { path: string; index: number; label: string; }
 export interface Settings { input_device: string | null; output_device: string | null; latency: LatencyProfile; auto_backoff: boolean;
-  record_dir: string | null; obs_host: string; obs_port: number; obs_password: string; obs_auto_import: boolean; preroll_secs: number; preroll_prepend: boolean; recent_projects: string[]; follow_obs: boolean; onboarded?: boolean; }
+  record_dir: string | null; obs_host: string; obs_port: number; obs_password: string; obs_auto_import: boolean; preroll_secs: number; preroll_prepend: boolean; recent_projects: string[]; follow_obs: boolean; onboarded?: boolean;
+  update_auto_check?: boolean; update_last_check?: number | null; update_skip_version?: string | null; }
 export interface Level { left: number; right: number; recording: boolean; paused: boolean; rec_secs: number; xruns: number; playing: boolean; play_paused?: boolean; play_secs: number; play_total: number; }
 export interface EngineStatus { input_id: string | null; output_id: string | null; latency: LatencyProfile; buffer_frames: number; sample_rate: number; channels: number; note: string | null; }
 export interface Waveform { path: string; name: string; sample_rate: number; channels: number; duration_secs: number; peaks: number[]; }

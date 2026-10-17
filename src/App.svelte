@@ -7,6 +7,8 @@
   import Meter from "./lib/Meter.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
+  import UpdateDialog from "./lib/UpdateDialog.svelte";
+  import { shouldAutoCheck } from "./lib/updates";
   import logoUrl from "./assets/logo.png";
   import WaveCanvas from "./lib/WaveCanvas.svelte";
   import ObsPanel from "./lib/ObsPanel.svelte";
@@ -33,6 +35,12 @@
   let toasts = $state<{ id: number; text: string; kind: string }[]>([]);
   let showSettings = $state(false);
   let showAbout = $state(false);
+  /** null = closed, "manual" = Help > Check for updates, "quiet" = startup check */
+  let updateMode = $state<null | "manual" | "quiet">(null);
+  async function patchSettings(p: Partial<Settings>) {
+    Object.assign(settings, p);
+    try { const s = await api.getSettings(); await api.saveSettings({ ...s, ...p }); } catch {}
+  }
   let nextId = 1;
 
   const inputs = $derived(devices.filter((d) => d.is_input));
@@ -62,7 +70,7 @@
   function removeTrack(id: number) { commit("Remove track", { ...hist.present, tracks: hist.present.tracks.filter((t) => t.id !== id) }); }
 
   // ---- edit actions ----
-  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about";
+  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates";
   async function run(action: Action) {
     const sel = selection;
     switch (action) {
@@ -97,6 +105,7 @@
       }
       case "stop": await api.stopPlayback(); playingId = null; break;
       case "about": showAbout = true; break;
+      case "checkupdates": showAbout = false; updateMode = "manual"; break;
       case "record": await toggleRecord(); break;
       case "import": await importFile(); break;
       case "export": if (activeTrack()) showExport = true; else toast("Nothing to export", "warn"); break;
@@ -394,6 +403,9 @@
       settings = await api.getSettings(); devices = await api.listDevices(); recentProjects = settings.recent_projects;
       const a = await api.autosaveCheck();
       if (a) { try { if (deserialize(a).tracks.length) recovery = a; else api.autosaveClear(); } catch { api.autosaveClear(); } }
+      // quiet update check, at most once a day, a few seconds after startup
+      if (settings.onboarded !== false && shouldAutoCheck(settings.update_auto_check ?? true, settings.update_last_check, Date.now()))
+        setTimeout(() => { if (!updateMode) updateMode = "quiet"; }, 8000);
     })();
     const autosave = setInterval(async () => {
       if (hist.present === autosavedPresent || !hist.present.tracks.length) return;
@@ -429,7 +441,14 @@
   });
 </script>
 
-{#if showAbout}<About onclose={() => (showAbout = false)} />{/if}
+{#if showAbout}<About onclose={() => (showAbout = false)} onupdates={() => { showAbout = false; updateMode = "manual"; }} />{/if}
+{#if updateMode}
+  <UpdateDialog quiet={updateMode === "quiet"} skipped={settings.update_skip_version ?? null} {dirty}
+    busy={level.recording ? "A recording is in progress. Stop recording before installing the update." : null}
+    onchecked={() => patchSettings({ update_last_check: Date.now() })}
+    onskip={(v) => patchSettings({ update_skip_version: v })}
+    onclose={() => (updateMode = null)} />
+{/if}
 {#if settings && settings.onboarded === false}
   <Onboarding {settings} {devices} {level} onsetinput={setInput} ondone={async () => { settings.onboarded = true; await api.saveSettings(settings); }} />
 {/if}
@@ -537,6 +556,7 @@
           <input id="pre" type="range" min="0" max="60" step="5" bind:value={settings.preroll_secs} onchange={setPreroll} />
           <label class="chk"><input type="checkbox" bind:checked={settings.preroll_prepend} onchange={setPreroll} /> Add the buffer to the start when I press Record</label>
           <div class="small">The mic is always shared, so OBS, Discord and other apps can use it at the same time.</div>
+          <label class="chk"><input type="checkbox" checked={settings.update_auto_check ?? true} onchange={(e) => patchSettings({ update_auto_check: e.currentTarget.checked })} /> Check for updates at startup (once a day)</label>
           <button class="aboutlink" onclick={() => (showAbout = true)}>ℹ About StreamWave · ☕ Support the developer</button>
           <label class="chk"><input type="checkbox" bind:checked={settings.auto_backoff} onchange={() => setLatency(settings.latency)} /> Auto-switch to safer latency on dropouts</label>
         </div>

@@ -16,7 +16,7 @@ jobs:
           - platform: windows-latest
             args: --config src-tauri/tauri.windows-installer.conf.json
           - platform: ubuntu-22.04
-            args: --bundles appimage,deb
+            args: --bundles appimage,deb --config src-tauri/tauri.updater.conf.json
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -61,6 +61,9 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # updater signing key (minisign, from `npx tauri signer generate`); add both as repository secrets
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: StreamWave v__VERSION__

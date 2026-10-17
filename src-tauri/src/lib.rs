@@ -215,6 +215,8 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &it("savelast", "Save Last N Seconds (pre-record buffer)", Some("CmdOrCtrl+Shift+R"))?,
     ])?;
     let help = Submenu::with_items(app, "Help", true, &[
+        &it("checkupdates", "Check for Updates…", None)?,
+        &PredefinedMenuItem::separator(app)?,
         &it("about", "About StreamWave", None)?,
     ])?;
     app.set_menu(Menu::with_items(app, &[&file, &edit, &transport, &help])?)?;
@@ -228,6 +230,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
             let default_rec_dir = app.path().audio_dir().or_else(|_| app.path().document_dir()).unwrap_or_else(|_| config_dir.clone()).join("StreamWave");
@@ -239,6 +242,8 @@ pub fn run() {
             app.manage(AppState { audio, settings: Mutex::new(settings), config_dir, default_rec_dir });
             app.manage(Arc::new(obs::ObsState::default()));
             app.manage(render::DecodeCache::default());
+            #[cfg(desktop)]
+            app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             build_menu(app)?;
             if !recovered.is_empty() {
                 let h = app.handle().clone();

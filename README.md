@@ -68,17 +68,21 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 ## ⬇ Install
 
 ### Windows 10/11
-1. Download **`StreamWave_0.5.0_x64-setup.exe`** from [Releases](https://github.com/postmanpat-303/StreamWave/releases/latest).
+1. Download **`StreamWave_<version>_x64-setup.exe`** from [Releases](https://github.com/postmanpat-303/StreamWave/releases/latest).
 2. Run it. No admin rights are needed; it installs for your user only. FFmpeg is included.
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
 ### Linux
-Download **`StreamWave_0.5.0_amd64.AppImage`**, then:
+Download **`StreamWave_<version>_amd64.AppImage`**, then:
 ```bash
-chmod +x StreamWave_0.5.0_amd64.AppImage
-./StreamWave_0.5.0_amd64.AppImage
+chmod +x StreamWave_*_amd64.AppImage
+./StreamWave_*_amd64.AppImage
 ```
 Install FFmpeg from your distro (`sudo apt install ffmpeg`, `sudo dnf install ffmpeg-free`, `sudo pacman -S ffmpeg`) for formats other than WAV and for OBS video files. Audio works through PipeWire, PulseAudio or JACK.
+
+### Updates
+From 0.6.0 on, StreamWave can update itself. Use **Help → Check for updates…** (or the button in About). It shows what's new and only downloads when you click **Download & install**. A quiet check also runs at startup, at most once a day, and you can turn it off in Settings. Updates are signed and verified before they're installed.
+The Windows installer and the AppImage can self-update. The `.deb` cannot, so update it from Releases. **0.5.x has no updater, so install 0.6.0 by hand once.**
 
 ### Connect OBS
 In OBS: **Tools → WebSocket Server Settings → Enable WebSocket server**, copy the password, and paste it into StreamWave's first-run setup (or the OBS panel).
@@ -99,6 +103,8 @@ npm run tauri build    # installers in src-tauri/target/release/bundle
 
 Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). See the [user guide](GUIDE.md) for ASIO setup, bundling FFmpeg, and all keyboard shortcuts. Release builds can be run by hand from GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml), *Run workflow*). They produce a draft release.
 
+**Updater signing (maintainers):** release builds are signed for the in-app updater with a minisign key made by `npx tauri signer generate`. The public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). The private key is **never** committed. To build updater artifacts (`.sig` files) locally, set `TAURI_SIGNING_PRIVATE_KEY` (the key file path or its contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, then build with `--config src-tauri/tauri.windows-installer.conf.json` (Windows) or `--config src-tauri/tauri.updater.conf.json` (AppImage). Plain `npm run tauri build` doesn't need the key. For the GitHub release workflow, add both values as repository secrets with those names. Each release must attach a `latest.json` listing the `windows-x86_64` setup .exe and `linux-x86_64` AppImage with their signatures, because the app reads it from `releases/latest/download/latest.json`.
+
 **Stack:** Tauri 2 · Rust (cpal, symphonia, hound, rtrb lock-free rings, obws, ebur128, rustfft, nnnoiseless) · Svelte 5 + TypeScript + Vite.
 
 ## 🗺 Roadmap
@@ -108,6 +114,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **Auto-chapters**: chapter markers from topic changes and OBS scenes, exported to YouTube timestamps
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
 - [ ] Multi-track mixing view, clip fades and crossfades
+- [x] In-app update check (0.6.0)
 - [ ] Code-signed Windows installer, Flatpak, macOS build
 
 Ideas welcome; please open an issue.

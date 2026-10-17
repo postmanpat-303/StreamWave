@@ -22,6 +22,7 @@
         "installerHooks": "installer/hooks.nsh",
         "template": "installer/installer.template.nsi"
       }
-    }
+    },
+    "createUpdaterArtifacts": true
   }
 }

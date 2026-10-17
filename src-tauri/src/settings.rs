@@ -30,7 +30,14 @@ pub struct Settings {
     pub follow_obs: bool,
     /// first-run setup finished or skipped
     pub onboarded: bool,
+    /// quiet update check at startup (at most once a day)
+    #[serde(default = "dtrue")] pub update_auto_check: bool,
+    /// unix ms of the last automatic update check
+    pub update_last_check: Option<i64>,
+    /// version the user chose "Skip this version" for
+    pub update_skip_version: Option<String>,
 }
+fn dtrue() -> bool { true }
 fn d30() -> f32 { 30.0 }
 
 impl Settings {
@@ -40,7 +47,7 @@ impl Settings {
         self.recent_projects.truncate(10);
     }
     pub fn with_defaults() -> Self {
-        Self { obs_host: "localhost".into(), obs_port: 4455, auto_backoff: true, obs_auto_import: true, preroll_secs: 30.0, ..Default::default() }
+        Self { obs_host: "localhost".into(), obs_port: 4455, auto_backoff: true, obs_auto_import: true, preroll_secs: 30.0, update_auto_check: true, ..Default::default() }
     }
     fn path(dir: &PathBuf) -> PathBuf { dir.join("settings.json") }
     pub fn load(dir: &PathBuf) -> Self {
@@ -54,5 +61,22 @@ impl Settings {
         std::fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
         std::fs::rename(tmp, Self::path(dir))?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn update_check_defaults_on_for_old_settings_files() {
+        // a 0.5.x settings.json has no update_* keys
+        let s: Settings = serde_json::from_str(r#"{"obs_host":"localhost","obs_port":4455,"onboarded":true}"#).unwrap();
+        assert!(s.update_auto_check);
+        assert_eq!(s.update_last_check, None);
+        assert_eq!(s.update_skip_version, None);
+        assert!(Settings::with_defaults().update_auto_check);
+        let off: Settings = serde_json::from_str(r#"{"update_auto_check":false,"update_skip_version":"0.6.1"}"#).unwrap();
+        assert!(!off.update_auto_check);
+        assert_eq!(off.update_skip_version.as_deref(), Some("0.6.1"));
     }
 }

@@ -4,7 +4,7 @@
   import { openUrl } from "@tauri-apps/plugin-opener";
   import logoUrl from "../assets/logo-256.png";
   import { AUTHOR, COFFEE_URL, PAYPAL_URL, REPO_URL, type AllowedLink } from "./about";
-  let { onclose }: { onclose: () => void } = $props();
+  let { onclose, onupdates }: { onclose: () => void; onupdates?: () => void } = $props();
   let version = $state("");
   let err = $state<string | null>(null);
   onMount(() => {
@@ -26,6 +26,7 @@
     <div class="by">Created by <b>{AUTHOR}</b></div>
     <button class="coffee" onclick={() => go(COFFEE_URL)}>☕ Buy me a coffee</button>
     <button class="paypal" onclick={() => go(PAYPAL_URL)}>Donate via PayPal</button>
+    {#if onupdates}<button class="upd" onclick={onupdates}>⟳ Check for updates…</button>{/if}
     <button class="link" onclick={() => go(REPO_URL)}>GitHub: postmanpat-303/StreamWave ↗</button>
     {#if err}<div class="err">{err}</div>{/if}
     <div class="legal">
@@ -46,6 +47,7 @@
   .coffee:hover { filter: brightness(1.08); }
   .paypal { padding: 6px 14px; font-size: 12.5px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
   .paypal:hover { color: var(--accent); border-color: var(--accent); }
+  .upd { padding: 7px 16px; font-size: 13px; border-radius: 999px; margin-top: 4px; }
   .link { background: transparent; border: 0; color: var(--accent); cursor: pointer; }
   .legal { font-size: 11.5px; color: var(--muted); line-height: 1.5; margin-top: 8px; text-align: left; }
   .legal p { margin: 6px 0; }
