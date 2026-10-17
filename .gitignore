@@ -1,0 +1,30 @@
+# dependencies & build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+
+# bundled FFmpeg binaries (downloaded at build time, never committed)
+src-tauri/binaries/*
+!src-tauri/binaries/README.md
+ffmpeg*.exe
+ffprobe*.exe
+ffmpeg-*/
+*.zip
+
+# installers
+*.AppImage
+*-setup.exe
+*.msi
+
+# local / secrets
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

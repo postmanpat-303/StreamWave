@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StreamWave: the audio recorder & editor for streamers</title>
+<meta name="description" content="Free, open-source audio recorder and editor for streamers and podcasters. OBS sync, one-click Studio Sound, never miss a take, live effects, crash-safe recording.">
+<meta property="og:title" content="StreamWave">
+<meta property="og:description" content="Record, clean up and sync your voice with OBS. Free and open source.">
+<meta property="og:image" content="og.png">
+<meta name="theme-color" content="#ff7a1a">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+  :root { --bg:#0d0a08; --bg2:#1a110a; --card:#17110c; --line:#3a2a1d; --txt:#fff4e8; --mut:#c9b6a3; --c1:#ffb347; --c2:#ff7a1a; --c3:#ff4d1f; --sea:#2ec4d6; --grad:linear-gradient(90deg,var(--c1),var(--c2),var(--c3)); }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html { scroll-behavior:smooth; }
+  body { font:16px/1.6 Inter,"Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--txt); overflow-x:hidden; }
+  a { color:var(--c1); text-decoration:none; }
+  .hero-logo { width:132px; height:132px; border-radius:30px; box-shadow:0 18px 60px rgba(255,122,26,.4); margin-bottom:28px; animation:float 6s ease-in-out infinite; }
+  @keyframes float { 50% { transform:translateY(-8px) rotate(-1.5deg); } }
+  @media (prefers-reduced-motion:reduce){ .hero-logo{ animation:none; } }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 24px; }
+  nav { position:sticky; top:0; z-index:10; backdrop-filter:blur(12px); background:rgba(13,10,8,.75); border-bottom:1px solid var(--line); }
+  nav .wrap { display:flex; align-items:center; gap:20px; height:64px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px; color:var(--txt); }
+  .brand img { width:34px; height:34px; border-radius:9px; }
+  .brand b { font-weight:800; }
+  .brand span { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  nav .links { margin-left:auto; display:flex; gap:22px; font-size:14px; }
+  nav .links a { color:var(--mut); } nav .links a:hover { color:var(--txt); }
+  @media (max-width:720px){ nav .links a:not(.gh){ display:none; } }
+
+  header { position:relative; padding:96px 0 40px; text-align:center; background:radial-gradient(ellipse at 50% 80%, rgba(255,122,26,.22), transparent 60%), linear-gradient(180deg,var(--bg2),var(--bg)); overflow:hidden; }
+  h1 { font-size:clamp(40px,7vw,80px); line-height:1.05; letter-spacing:-2px; font-weight:800; }
+  h1 .g { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead { max-width:680px; margin:20px auto 0; color:var(--mut); font-size:clamp(17px,2.2vw,20px); }
+  .cta { display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:34px; }
+  .btn { display:inline-flex; align-items:center; gap:10px; padding:14px 26px; border-radius:999px; font-weight:700; border:1px solid var(--line); color:var(--txt); transition:transform .15s, box-shadow .15s; }
+  .btn:hover { transform:translateY(-2px); }
+  .btn.primary { background:var(--grad); border:0; color:#0b0b14; box-shadow:0 0 30px rgba(255,122,26,.45); }
+  .btn.primary:hover { box-shadow:0 0 45px rgba(255,179,71,.55); }
+  .meta { margin-top:14px; font-size:13px; color:var(--mut); }
+  .wave { display:block; width:100%; height:180px; margin-top:40px; }
+  .wave path { fill:none; stroke-linecap:round; }
+  .bars { display:flex; gap:5px; justify-content:center; align-items:center; height:90px; margin-top:-120px; opacity:.25; pointer-events:none; }
+  .bars i { width:6px; border-radius:3px; background:var(--grad); animation:bar 1.4s ease-in-out infinite; }
+  @keyframes bar { 0%,100%{ height:12px; } 50%{ height:80px; } }
+  @media (prefers-reduced-motion:reduce){ .bars i{ animation:none; height:30px; } }
+
+  section { padding:84px 0; }
+  h2 { font-size:clamp(28px,4vw,42px); letter-spacing:-1px; text-align:center; }
+  .sub { text-align:center; color:var(--mut); max-width:640px; margin:12px auto 44px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; }
+  .card { background:linear-gradient(180deg,var(--card),#100c09); border:1px solid var(--line); border-radius:18px; padding:24px; transition:transform .2s, border-color .2s, box-shadow .2s; }
+  .card:hover { transform:translateY(-4px); border-color:var(--c2); box-shadow:0 10px 40px rgba(255,122,26,.18); }
+  .card .ico { font-size:28px; width:52px; height:52px; display:grid; place-items:center; border-radius:14px; background:rgba(255,122,26,.14); margin-bottom:14px; }
+  .card h3 { font-size:19px; margin-bottom:6px; }
+  .card p { color:var(--mut); font-size:15px; }
+
+  .obs { background:linear-gradient(180deg,var(--bg),var(--bg2),var(--bg)); }
+  .split { display:grid; grid-template-columns:1.1fr 1fr; gap:48px; align-items:center; }
+  @media (max-width:860px){ .split{ grid-template-columns:1fr; } }
+  .split h2, .split .sub { text-align:left; margin-left:0; }
+  .checks { list-style:none; display:grid; gap:12px; }
+  .checks li { padding-left:34px; position:relative; color:var(--mut); }
+  .checks li b { color:var(--txt); }
+  .checks li::before { content:"✓"; position:absolute; left:0; top:0; width:22px; height:22px; border-radius:50%; background:var(--grad); color:#0b0b14; font-size:13px; font-weight:800; display:grid; place-items:center; }
+  .mock { border:1px solid var(--line); border-radius:18px; background:#120d09; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  .mock .row { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:10px; background:#1d150e; margin-bottom:10px; font-size:14px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--sea); box-shadow:0 0 10px var(--sea); }
+  .dot.rec { background:#ff4d6d; box-shadow:0 0 10px #ff4d6d; animation:blink 1.2s infinite; }
+  @keyframes blink { 50%{ opacity:.3; } }
+  .mock .trk { height:46px; border-radius:8px; background:repeating-linear-gradient(90deg,rgba(255,122,26,.55) 0 2px,transparent 2px 5px); mask:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent); margin-bottom:8px; }
+  .mock .trk.b { background:repeating-linear-gradient(90deg,rgba(46,196,214,.5) 0 2px,transparent 2px 6px); }
+  .mock .mk { font-size:12px; color:var(--mut); display:flex; gap:8px; flex-wrap:wrap; }
+  .mock .mk span { border:1px solid var(--line); border-radius:999px; padding:2px 10px; }
+
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
+  th, td { padding:14px 16px; text-align:left; border-bottom:1px solid var(--line); font-size:15px; }
+  th { background:#22180f; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); }
+  td:not(:first-child), th:not(:first-child) { text-align:center; }
+  tr:last-child td { border-bottom:0; }
+  .y { color:var(--c2); font-weight:700; } .n { color:#7d6d5f; }
+  .tablewrap { overflow-x:auto; }
+  .note { font-size:13px; color:var(--mut); text-align:center; margin-top:14px; }
+
+  .dl { text-align:center; }
+  .dlbox { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; max-width:760px; margin:0 auto; }
+  .dlbox .card { text-align:left; }
+  .smart { margin-top:22px; color:var(--mut); font-size:14px; }
+  footer { border-top:1px solid var(--line); padding:34px 0; color:var(--mut); font-size:14px; }
+  footer .wrap { display:flex; flex-wrap:wrap; gap:16px; justify-content:space-between; }
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a class="brand" href="#"><img src="logo.png" alt=""><b>Stream<span>Wave</span></b></a>
+  <div class="links"><a href="#features">Features</a><a href="#obs">OBS</a><a href="#compare">Compare</a><a href="#download">Download</a><a class="gh" href="https://github.com/postmanpat-303/StreamWave">GitHub ↗</a></div>
+</div></nav>
+
+<header>
+  <div class="wrap">
+    <img class="hero-logo" src="logo.png" alt="StreamWave logo: an engraved humpback whale singing as it breaches a wave">
+    <h1>Your voice,<br><span class="g">stream-ready.</span></h1>
+    <p class="lead">StreamWave is a free, open-source recorder and editor for streamers, podcasters and voice creators. One button to record, one click to sound like a studio, and it stays locked to OBS.</p>
+    <div class="cta">
+      <a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">⬇ Download v0.5</a>
+      <a class="btn" href="https://github.com/postmanpat-303/StreamWave">★ View on GitHub</a>
+    </div>
+    <div class="meta">Windows 10/11 · Linux AppImage · MIT licence · No account, no telemetry</div>
+  </div>
+  <svg class="wave" viewBox="0 0 1200 180" preserveAspectRatio="none" aria-hidden="true">
+    <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#ffb347"/><stop offset=".5" stop-color="#ff7a1a"/><stop offset="1" stop-color="#ff4d1f"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    <g filter="url(#glow)">
+      <path id="w1" stroke="url(#g)" stroke-width="3"/>
+      <path id="w2" stroke="#2ec4d6" stroke-width="2" opacity=".7"/>
+      <path id="w3" stroke="#ffb347" stroke-width="1.5" opacity=".6"/>
+    </g>
+  </svg>
+  <div class="bars" aria-hidden="true" id="bars"></div>
+</header>
+
+<section id="features"><div class="wrap">
+  <h2>Everything a creator needs. Nothing they don't.</h2>
+  <p class="sub">Built for real creator setups: OBS running, Discord open, one mic shared between them.</p>
+  <div class="grid">
+    <div class="card"><div class="ico">🎥</div><h3>OBS sync</h3><p>Record, pause and stop together. Scene changes become markers. Multi-track OBS recordings import as separate tracks.</p></div>
+    <div class="card"><div class="ico">🪄</div><h3>Studio Sound</h3><p>One click analyses your voice and builds a clean chain: denoise, EQ, de-ess, compress, -16 LUFS. Fully editable.</p></div>
+    <div class="card"><div class="ico">⏪</div><h3>Never miss a take</h3><p>A rolling buffer keeps the last 60 seconds. Said something great before hitting record? Save it.</p></div>
+    <div class="card"><div class="ico">🎛</div><h3>Live effects</h3><p>Move a slider and hear it instantly. Exports use the same engine, so the file matches what you heard.</p></div>
+    <div class="card"><div class="ico">🛟</div><h3>Crash-safe recording</h3><p>Takes are written continuously and repaired after a crash or power cut. Unplugged mic? Your take is kept.</p></div>
+    <div class="card"><div class="ico">📦</div><h3>All open formats</h3><p>WAV, FLAC, MP3, Ogg, Opus, AAC, AIFF and audio from MP4/MKV in. WAV, FLAC, MP3, Opus, Ogg and more out, with tags.</p></div>
+    <div class="card"><div class="ico">🤝</div><h3>Shared mic, always</h3><p>Never takes exclusive control of your microphone. OBS, Discord and your browser keep working alongside.</p></div>
+    <div class="card"><div class="ico">🩺</div><h3>Live mic check</h3><p>Warnings for clipping, too quiet, a dead channel or mains hum, before they ruin a recording.</p></div>
+    <div class="card"><div class="ico">✂️</div><h3>Non-destructive editing</h3><p>Cut, copy, paste with full undo. Originals never change. Projects autosave and recover after a crash.</p></div>
+  </div>
+</div></section>
+
+<section id="obs" class="obs"><div class="wrap split">
+  <div>
+    <h2>Made to sit next to OBS</h2>
+    <p class="sub">StreamWave talks to OBS 28+ over the built-in WebSocket server. Turn it on in OBS under Tools → WebSocket Server Settings and you're connected.</p>
+    <ul class="checks">
+      <li><b>Follow OBS</b>: hit record in OBS and StreamWave records too. Pause and stop together.</li>
+      <li><b>Scene markers</b>: every scene switch drops a marker, so you can find the highlights later.</li>
+      <li><b>Split tracks</b>: mic, desktop and Discord from one OBS file become separate, editable tracks.</li>
+      <li><b>Send back to video</b>: put the cleaned-up audio into a copy of the video, without re-encoding the picture, and with chapters from your markers.</li>
+      <li><b>Auto-reconnect</b>: OBS restarted? StreamWave reconnects on its own and shows you the status.</li>
+    </ul>
+  </div>
+  <div class="mock" aria-hidden="true">
+    <div class="row"><span class="dot"></span> OBS connected · OBS 31 <span style="margin-left:auto;color:#ff4d6d"><span class="dot rec" style="display:inline-block"></span> REC 00:42:17</span></div>
+    <div class="trk"></div><div class="trk b"></div><div class="trk"></div>
+    <div class="mk"><span>Scene: Just Chatting</span><span>Scene: Gameplay</span><span>Marker 3</span><span>Scene: Outro</span></div>
+  </div>
+</div></section>
+
+<section id="compare"><div class="wrap">
+  <h2>How it compares</h2>
+  <p class="sub">Classic desktop audio editors are powerful and battle-tested. StreamWave focuses on a creator's everyday workflow.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Feature</th><th>StreamWave</th><th>Typical legacy editor</th></tr></thead>
+    <tbody>
+      <tr><td>OBS sync (record together, scene markers)</td><td class="y">✓ Built in</td><td class="n">—</td></tr>
+      <tr><td>Import OBS multi-track recordings as separate tracks</td><td class="y">✓ Automatic</td><td class="n">Manual</td></tr>
+      <tr><td>Put edited audio back into the video</td><td class="y">✓ One click</td><td class="n">—</td></tr>
+      <tr><td>One-click voice cleanup to a loudness target</td><td class="y">✓ Studio Sound</td><td class="n">Several separate steps</td></tr>
+      <tr><td>Hear effect changes live while playing</td><td class="y">✓</td><td class="n">Often preview-only</td></tr>
+      <tr><td>Rolling "save the last 60 s" buffer</td><td class="y">✓</td><td class="n">—</td></tr>
+      <tr><td>Recording survives crashes and power cuts</td><td class="y">✓ Auto-repair</td><td class="n">Varies</td></tr>
+      <tr><td>Mic shared with Discord/OBS while recording</td><td class="y">✓ Always</td><td class="n">Depends on settings</td></tr>
+      <tr><td>Non-destructive editing with full undo</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td>Open formats (WAV, FLAC, MP3, Opus, Ogg)</td><td class="y">✓</td><td class="y">✓</td></tr>
+      <tr><td>Free and open source</td><td class="y">✓ MIT</td><td class="y">Often</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Comparison reflects a typical general-purpose desktop audio editor out of the box, without plugins.</p>
+</div></section>
+
+<section id="download" class="dl"><div class="wrap">
+  <h2>Get StreamWave</h2>
+  <p class="sub">Version 0.5.0, the first public release.</p>
+  <div class="dlbox">
+    <div class="card"><div class="ico">🪟</div><h3>Windows 10 / 11</h3><p>NSIS installer, per-user, FFmpeg included.</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download .exe</a></div>
+    <div class="card"><div class="ico">🐧</div><h3>Linux</h3><p>AppImage for any modern distro. Install FFmpeg from your package manager.</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download AppImage</a></div>
+  </div>
+  <p class="smart">🛡 The installer isn't code-signed yet. If Windows SmartScreen appears, click <b>More info → Run anyway</b>.</p>
+</div></section>
+
+<footer><div class="wrap">
+  <div>© 2026 StreamWave · MIT licence · Bundles FFmpeg (LGPL)</div>
+  <div><a href="https://github.com/postmanpat-303/StreamWave">GitHub</a> · <a href="https://github.com/postmanpat-303/StreamWave/releases">Releases</a> · <a href="https://github.com/postmanpat-303/StreamWave/issues">Issues</a></div>
+</div></footer>
+
+<script>
+  // animated neon waveform
+  const W = 1200, H = 180, N = 160;
+  const paths = [["w1", 55, 3, 0.9], ["w2", 40, 4.6, 1.3], ["w3", 28, 6.9, 1.9]];
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function frame(t) {
+    for (const [id, amp, f, sp] of paths) {
+      let d = "";
+      for (let i = 0; i <= N; i++) {
+        const x = (i / N) * W, u = i / N;
+        const env = Math.pow(Math.sin(u * Math.PI), 0.7);
+        const y = H / 2 + amp * env * Math.sin(u * f * 2 * Math.PI + t * sp) * (0.65 + 0.35 * Math.sin(u * 9 - t * 0.7));
+        d += (i ? "L" : "M") + x.toFixed(1) + "," + y.toFixed(1);
+      }
+      document.getElementById(id).setAttribute("d", d);
+    }
+    if (!reduce) requestAnimationFrame((ms) => frame(ms / 1000));
+  }
+  frame(0);
+  const bars = document.getElementById("bars");
+  for (let i = 0; i < 48; i++) { const b = document.createElement("i"); b.style.animationDelay = (-(i * 0.09) % 1.4) + "s"; bars.appendChild(b); }
+</script>
+</body>
+</html>

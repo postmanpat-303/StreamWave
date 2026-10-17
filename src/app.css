@@ -1,0 +1,10 @@
+:root { --bg:#0e1117; --panel:#161b24; --panel2:#1d2430; --line:#2a3342; --text:#e6ebf2; --muted:#8a96a8; --accent:#19d3b0; --rec:#ff3b5c; --warn:#ffb020;
+  font-family: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif; color: var(--text); background: var(--bg); }
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; overflow: hidden; }
+button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; width: 100%; }
+label { font-size: 12px; color: var(--muted); display: block; margin: 8px 0 4px; }
+h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }

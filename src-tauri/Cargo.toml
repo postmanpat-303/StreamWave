@@ -1,0 +1,48 @@
+[package]
+name = "streamwave"
+version = "0.5.0"
+description = "StreamWave - audio recorder & editor for streamers with OBS sync"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/postmanpat-303/StreamWave"
+
+[lib]
+name = "streamwave_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[features]
+default = []
+# Steinberg ASIO support on Windows (needs the ASIO SDK, see README)
+asio = ["cpal/asio"]
+# JACK support on Linux (needs libjack-dev)
+jack = ["cpal/jack"]
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+cpal = "0.15"
+hound = "3.5"
+rtrb = "0.3"
+symphonia = { version = "0.5", features = ["all"] }
+obws = { version = "0.15", features = ["events"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+futures-util = "0.3"
+anyhow = "1"
+parking_lot = "0.12"
+chrono = "0.4"
+log = "0.4"
+ebur128 = "0.1.10"
+rustfft = "6.4.1"
+nnnoiseless = { version = "0.5.2", default-features = false }
+
+# DSP is heavy: keep dev builds fast enough for real-time preview
+[profile.dev]
+opt-level = 1
+[profile.dev.package."*"]
+opt-level = 3

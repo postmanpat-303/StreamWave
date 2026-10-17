@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            args: --config src-tauri/tauri.windows-installer.conf.json
+          - platform: ubuntu-22.04
+            args: --bundles appimage,deb
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libasound2-dev patchelf
+
+      - name: FFmpeg sidecar (LGPL build, Windows only)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $zip = "ffmpeg.zip"
+          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-win64-lgpl-8.1.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath ffmpeg-dl
+          $bin = Get-ChildItem ffmpeg-dl -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $bin.FullName src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe
+          Copy-Item (Join-Path $bin.DirectoryName "ffprobe.exe") src-tauri/binaries/ffprobe-x86_64-pc-windows-msvc.exe
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Tests
+        run: |
+          npm test
+          npm run check
+          npm run build
+          cargo test --lib --manifest-path src-tauri/Cargo.toml
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: StreamWave ${{ github.ref_name }}
+          releaseBody: |
+            See CHANGELOG.md. Windows: unsigned installer; if SmartScreen appears click "More info" then "Run anyway".
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}

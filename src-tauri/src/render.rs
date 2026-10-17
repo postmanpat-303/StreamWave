@@ -1,0 +1,115 @@
+//! Render an edited clip list (non-destructive) to a new WAV. Sources are only read.
+use crate::waveform::{decode_file, Decoded};
+use parking_lot::Mutex;
+use serde::Deserialize;
+use std::path::Path;
+use std::sync::Arc;
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct ClipSpec { pub src: String, pub start: f64, pub end: f64 }
+
+/// Decoded sources, most-recently-used first. Bounded so long sessions with many big files
+/// don't eat all RAM (a 1 h stereo 48 kHz file is ~1.4 GB as f32).
+#[derive(Default)]
+pub struct DecodeCache(Mutex<Vec<(String, Arc<Decoded>)>>);
+const CACHE_BYTES: usize = 1_500_000_000;
+
+impl DecodeCache {
+    pub fn get(&self, path: &str) -> anyhow::Result<Arc<Decoded>> {
+        {
+            let mut c = self.0.lock();
+            if let Some(i) = c.iter().position(|(p, _)| p == path) { let e = c.remove(i); let d = e.1.clone(); c.insert(0, e); return Ok(d) }
+        }
+        // decode outside the lock so other tracks aren't blocked
+        let d = Arc::new(decode_file(Path::new(path))?);
+        let mut c = self.0.lock();
+        c.retain(|(p, _)| p != path);
+        c.insert(0, (path.to_string(), d.clone()));
+        let mut bytes = 0usize;
+        c.retain(|(_, x)| { bytes += x.samples.len() * 4; bytes <= CACHE_BYTES || Arc::ptr_eq(x, &d) });
+        Ok(d)
+    }
+}
+
+/// Mix-free concatenation: output rate/channels follow the first clip's source.
+pub fn render(cache: &DecodeCache, clips: &[ClipSpec]) -> anyhow::Result<Decoded> {
+    anyhow::ensure!(!clips.is_empty(), "nothing to render");
+    let first = cache.get(&clips[0].src)?;
+    let (rate, ch) = (first.sample_rate, first.channels);
+    let mut out = Vec::new();
+    for c in clips {
+        let d = cache.get(&c.src)?;
+        let frames = d.samples.len() / d.channels;
+        let ratio = d.sample_rate as f64 / rate as f64;
+        let n = ((c.end - c.start).max(0.0) * rate as f64).round() as usize;
+        let s0 = c.start * d.sample_rate as f64;
+        for f in 0..n {
+            let pos = s0 + f as f64 * ratio;
+            let i = pos as usize;
+            if i >= frames { break }
+            let j = (i + 1).min(frames - 1); let t = (pos - i as f64) as f32;
+            for k in 0..ch {
+                let sc = k % d.channels;
+                let a = d.samples[i * d.channels + sc]; let b = d.samples[j * d.channels + sc];
+                out.push(a + (b - a) * t);
+            }
+        }
+    }
+    Ok(Decoded { samples: out, channels: ch, sample_rate: rate })
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct TrackSpec { pub clips: Vec<ClipSpec>, #[serde(default)] pub fx: Vec<crate::fx::Slot>, #[serde(default = "one")] pub gain: f32 }
+fn one() -> f32 { 1.0 }
+
+/// Render each track with its effects and sum them (rate/channels of the first track).
+pub fn render_mix(cache: &DecodeCache, tracks: &[TrackSpec]) -> anyhow::Result<Decoded> {
+    let mut out: Option<Decoded> = None;
+    for t in tracks.iter().filter(|t| !t.clips.is_empty()) {
+        let mut d = render(cache, &t.clips)?;
+        crate::fx::process_chain(&mut d, &t.fx);
+        match &mut out {
+            None => { if t.gain != 1.0 { d.samples.iter_mut().for_each(|s| *s *= t.gain) } out = Some(d) }
+            Some(o) => {
+                let d = crate::export::conform(&d, Some(o.channels as u16), Some(o.sample_rate));
+                if d.samples.len() > o.samples.len() { o.samples.resize(d.samples.len(), 0.0) }
+                for (a, b) in o.samples.iter_mut().zip(&d.samples) { *a += b * t.gain }
+            }
+        }
+    }
+    out.ok_or_else(|| anyhow::anyhow!("nothing to mix"))
+}
+
+pub fn write_wav(d: &Decoded, path: &Path) -> anyhow::Result<()> {
+    let spec = hound::WavSpec { channels: d.channels as u16, sample_rate: d.sample_rate, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+    let tmp = path.with_extension("tmp.wav");
+    let mut w = hound::WavWriter::create(&tmp, spec)?;
+    for s in &d.samples { w.write_sample(*s)?; }
+    w.finalize()?;
+    std::fs::rename(tmp, path)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn renders_clips_without_touching_source() {
+        let dir = std::env::temp_dir().join("tw_render_test"); let _ = std::fs::remove_dir_all(&dir); std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.wav");
+        let spec = hound::WavSpec { channels: 1, sample_rate: 1000, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+        let mut w = hound::WavWriter::create(&src, spec).unwrap();
+        for i in 0..1000 { w.write_sample(i as f32 / 1000.0).unwrap(); }
+        w.finalize().unwrap();
+        let before = std::fs::read(&src).unwrap();
+        let cache = DecodeCache::default();
+        let p = src.to_string_lossy().to_string();
+        // keep 0..0.2 and 0.5..0.6 => 300 samples
+        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.2 }, ClipSpec { src: p, start: 0.5, end: 0.6 }]).unwrap();
+        assert_eq!(d.samples.len(), 300);
+        assert!((d.samples[200] - 0.5).abs() < 1e-3);
+        let out = dir.join("out.wav"); write_wav(&d, &out).unwrap();
+        assert_eq!(hound::WavReader::open(&out).unwrap().len(), 300);
+        assert_eq!(std::fs::read(&src).unwrap(), before);
+    }
+}
