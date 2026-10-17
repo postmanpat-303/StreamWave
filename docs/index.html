@@ -77,6 +77,14 @@
   .mock .mk { font-size:12px; color:var(--mut); display:flex; gap:8px; flex-wrap:wrap; }
   .mock .mk span { border:1px solid var(--line); border-radius:999px; padding:2px 10px; }
 
+  .shots figure { margin:0; }
+  .shots .shot { border:1px solid var(--line); border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#120d09; }
+  .shots img { display:block; width:100%; }
+  .shots figcaption { padding:12px 16px; font-size:14px; color:var(--mut); }
+  .shots figcaption b { color:var(--txt); }
+  .shots .duo { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; }
+  @media (max-width:860px){ .shots .duo{ grid-template-columns:1fr; } }
+
   table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
   th, td { padding:14px 16px; text-align:left; border-bottom:1px solid var(--line); font-size:15px; }
   th { background:#22180f; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); }
@@ -97,7 +105,7 @@
 <body>
 <nav><div class="wrap">
   <a class="brand" href="#"><img src="logo.png" alt=""><b>Stream<span>Wave</span></b></a>
-  <div class="links"><a href="#features">Features</a><a href="#obs">OBS</a><a href="#compare">Compare</a><a href="#download">Download</a><a class="gh" href="https://github.com/postmanpat-303/StreamWave">GitHub ↗</a></div>
+  <div class="links"><a href="#features">Features</a><a href="#shots">Screenshots</a><a href="#obs">OBS</a><a href="#compare">Compare</a><a href="#download">Download</a><a class="gh" href="https://github.com/postmanpat-303/StreamWave">GitHub ↗</a></div>
 </div></nav>
 
 <header>
@@ -136,6 +144,25 @@
     <div class="card"><div class="ico">🤝</div><h3>Shared mic, always</h3><p>Never takes exclusive control of your microphone. OBS, Discord and your browser keep working alongside.</p></div>
     <div class="card"><div class="ico">🩺</div><h3>Live mic check</h3><p>Warnings for clipping, too quiet, a dead channel or mains hum, before they ruin a recording.</p></div>
     <div class="card"><div class="ico">✂️</div><h3>Non-destructive editing</h3><p>Cut, copy, paste with full undo. Originals never change. Projects autosave and recover after a crash.</p></div>
+  </div>
+</div></section>
+
+<section id="shots" class="shots"><div class="wrap">
+  <h2>See it in action</h2>
+  <p class="sub">The actual StreamWave UI, running with a demo project.</p>
+  <figure class="shot">
+    <img src="https://raw.githubusercontent.com/postmanpat-303/StreamWave/main/assets/screenshot-main.png" alt="StreamWave main window while recording: live meters, a 30-second pre-record buffer armed, and three OBS tracks (mic, desktop, Discord) imported as separate editable waveforms with scene markers">
+    <figcaption><b>Record, edit, clean up.</b> The OBS take comes back as separate mic / desktop / Discord tracks, scene changes become markers, and the armed 30 s pre-record buffer lets you save the moment after it happened.</figcaption>
+  </figure>
+  <div class="duo">
+    <figure class="shot">
+      <img src="https://raw.githubusercontent.com/postmanpat-303/StreamWave/main/assets/screenshot-studio.png" alt="Studio Sound panel after analysing a voice track, showing the editable effect chain it built: noise reduction, equalizer, de-esser, compressor, loudness and limiter">
+      <figcaption><b>✨ Studio Sound.</b> One click analyses your voice and builds a fully editable chain — denoise, EQ, de-ess, compress, -16 LUFS — with a live A/B comparison.</figcaption>
+    </figure>
+    <figure class="shot">
+      <img src="https://raw.githubusercontent.com/postmanpat-303/StreamWave/main/assets/screenshot-obs.png" alt="StreamWave OBS panel while connected and recording in sync, with Follow OBS and auto-import enabled, plus the Send back to video button">
+      <figcaption><b>Locked to OBS.</b> Record in sync, import every audio track when OBS stops, and send the cleaned-up audio back into the video.</figcaption>
+    </figure>
   </div>
 </div></section>
 
