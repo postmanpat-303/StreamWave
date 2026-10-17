@@ -6,6 +6,7 @@
   import * as E from "./lib/editModel";
   import Meter from "./lib/Meter.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
+  import About from "./lib/About.svelte";
   import logoUrl from "./assets/logo.png";
   import WaveCanvas from "./lib/WaveCanvas.svelte";
   import ObsPanel from "./lib/ObsPanel.svelte";
@@ -31,6 +32,7 @@
   let canUndo = $state(false), canRedo = $state(false);
   let toasts = $state<{ id: number; text: string; kind: string }[]>([]);
   let showSettings = $state(false);
+  let showAbout = $state(false);
   let nextId = 1;
 
   const inputs = $derived(devices.filter((d) => d.is_input));
@@ -60,7 +62,7 @@
   function removeTrack(id: number) { commit("Remove track", { ...hist.present, tracks: hist.present.tracks.filter((t) => t.id !== id) }); }
 
   // ---- edit actions ----
-  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo";
+  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about";
   async function run(action: Action) {
     const sel = selection;
     switch (action) {
@@ -94,6 +96,7 @@
         break;
       }
       case "stop": await api.stopPlayback(); playingId = null; break;
+      case "about": showAbout = true; break;
       case "record": await toggleRecord(); break;
       case "import": await importFile(); break;
       case "export": if (activeTrack()) showExport = true; else toast("Nothing to export", "warn"); break;
@@ -426,6 +429,7 @@
   });
 </script>
 
+{#if showAbout}<About onclose={() => (showAbout = false)} />{/if}
 {#if settings && settings.onboarded === false}
   <Onboarding {settings} {devices} {level} onsetinput={setInput} ondone={async () => { settings.onboarded = true; await api.saveSettings(settings); }} />
 {/if}
@@ -533,6 +537,7 @@
           <input id="pre" type="range" min="0" max="60" step="5" bind:value={settings.preroll_secs} onchange={setPreroll} />
           <label class="chk"><input type="checkbox" bind:checked={settings.preroll_prepend} onchange={setPreroll} /> Add the buffer to the start when I press Record</label>
           <div class="small">The mic is always shared, so OBS, Discord and other apps can use it at the same time.</div>
+          <button class="aboutlink" onclick={() => (showAbout = true)}>ℹ About StreamWave · ☕ Support the developer</button>
           <label class="chk"><input type="checkbox" bind:checked={settings.auto_backoff} onchange={() => setLatency(settings.latency)} /> Auto-switch to safer latency on dropouts</label>
         </div>
       {/if}
@@ -545,7 +550,8 @@
 <style>
   .app { display: flex; flex-direction: column; height: 100vh; }
   header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .brand { font-size: 17px; margin-right: auto; } .brand b { color: var(--accent); } .brand { display: flex; align-items: center; gap: 8px; } .logo { border-radius: 6px; }
+  .brand { font-size: 17px; margin-right: auto; } .brand b { color: var(--accent); } .aboutlink { margin-top: 10px; width: 100%; background: transparent; color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 8px; } .logo { border-radius: 6px; }
   .devsel { width: 320px; }
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; overflow: hidden; }
   .left { display: flex; flex-direction: column; gap: 16px; overflow: hidden; }

@@ -1,6 +1,6 @@
 [package]
 name = "streamwave"
-version = "0.5.0"
+version = "0.5.1"
 description = "StreamWave - audio recorder & editor for streamers with OBS sync"
 edition = "2021"
 license = "MIT"
@@ -40,6 +40,7 @@ log = "0.4"
 ebur128 = "0.1.10"
 rustfft = "6.4.1"
 nnnoiseless = { version = "0.5.2", default-features = false }
+tauri-plugin-opener = "2"
 
 # DSP is heavy: keep dev builds fast enough for real-time preview
 [profile.dev]
