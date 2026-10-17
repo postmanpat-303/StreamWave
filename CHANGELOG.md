@@ -2,9 +2,22 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## 0.5.2 (2026-10-17)
+## 0.5.3 (2026-10-17)
 ### Fixed
-- **Windows installer:** 0.5.1's installer could fail on Windows 11 with "Error launching installer". It is replaced by 0.5.2, built on the stock Tauri NSIS template.
+- **Windows upgrade from 0.5.0 failed with "Error launching installer".** When upgrading, the installer finds the old version's folder and runs its uninstaller as `uninstall.exe _?=<folder>`. It only looked for that folder under `HKCU\Software\<publisher>\StreamWave`. 0.5.0 was published as "Del" and 0.5.1+ as "Derek Heasley", so the lookup came back empty and the old uninstaller was started with `_?=` and no folder.
+- The installer now checks, in order, accepting a folder only if it contains `uninstall.exe`:
+  1. the publisher key
+  2. the old `Software\Del\StreamWave` key
+  3. `InstallLocation` (quotes stripped)
+  4. the folder containing `UninstallString` (quotes stripped)
+  5. `%LOCALAPPDATA%\StreamWave`
+- `InstallLocation` is now written without quotes. Quoted values written by 0.5.0–0.5.2 are still read correctly.
+- The failed registry lookups no longer leave the NSIS error flag set, which would otherwise have been reported as "unable to uninstall".
+- The 0.5.1 and 0.5.2 installers have the same problem when upgrading from 0.5.0. Fresh installs of them, and upgrades from 0.5.1/0.5.2, are fine.
+
+## 0.5.2 (2026-10-17) – upgrades from 0.5.0 affected, use 0.5.3
+### Fixed
+- **Windows installer:** 0.5.1's installer could fail on Windows 11 with "Error launching installer". It is replaced by 0.5.2, built on the stock Tauri NSIS template. (The real cause turned out to be the upgrade path, which was fixed in 0.5.3.)
   - Removed the customised template and the post-install icon-cache refresh, which ran `ie4uinit.exe` and called `SHChangeNotify` through the System plugin.
   - The installer now does only plain NSIS work. It installs `streamwave.ico`, points the Start-menu and desktop shortcuts at it, and uses the whale icon for the uninstaller.
 - Tested under Wine: fresh install, and upgrades from 0.5.0 and 0.5.1. All succeed, with shortcuts pointing at `streamwave.ico`.
