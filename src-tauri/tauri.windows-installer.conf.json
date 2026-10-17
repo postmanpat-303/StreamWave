@@ -19,8 +19,7 @@
         "headerImage": "installer/header.bmp",
         "sidebarImage": "installer/sidebar.bmp",
         "uninstallerIcon": "icons/icon.ico",
-        "installerHooks": "installer/hooks.nsh",
-        "template": "installer/installer.template.nsi"
+        "installerHooks": "installer/hooks.nsh"
       }
     }
   }

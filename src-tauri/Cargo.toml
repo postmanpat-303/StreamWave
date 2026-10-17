@@ -1,6 +1,6 @@
 [package]
 name = "streamwave"
-version = "0.5.1"
+version = "0.5.2"
 description = "StreamWave - audio recorder & editor for streamers with OBS sync"
 edition = "2021"
 license = "MIT"

@@ -2,7 +2,14 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## 0.5.1 (2026-10-17)
+## 0.5.2 (2026-10-17)
+### Fixed
+- **Windows installer:** 0.5.1's installer could fail on Windows 11 with "Error launching installer". It is replaced by 0.5.2, built on the stock Tauri NSIS template.
+  - Removed the customised template and the post-install icon-cache refresh, which ran `ie4uinit.exe` and called `SHChangeNotify` through the System plugin.
+  - The installer now does only plain NSIS work. It installs `streamwave.ico`, points the Start-menu and desktop shortcuts at it, and uses the whale icon for the uninstaller.
+- Tested under Wine: fresh install, and upgrades from 0.5.0 and 0.5.1. All succeed, with shortcuts pointing at `streamwave.ico`.
+
+## 0.5.1 (2026-10-17) – Windows installer withdrawn, use 0.5.2
 ### Added
 - **About StreamWave** (Help → About StreamWave, or the link at the bottom of Settings). Shows the logo, version, "Created by Derek Heasley", the MIT licence and FFmpeg LGPL notice, the GitHub link, and a **☕ Buy me a coffee** button.
 - External links open in the system browser through the Tauri opener plugin. They are limited to an allowlist of exactly two URLs (the PayPal.me donation link and the GitHub repo).
