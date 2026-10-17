@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/postmanpat-303/StreamWave?color=ff7a1a&label=release"></a>
-  <a href="https://github.com/postmanpat-303/StreamWave/actions/workflows/release.yml"><img alt="Build" src="https://img.shields.io/github/actions/workflow/status/postmanpat-303/StreamWave/release.yml?label=build"></a>
+  <a href="https://github.com/postmanpat-303/StreamWave/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/postmanpat-303/StreamWave/ci.yml?branch=main&label=CI"></a>
   <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-2ec4d6">
   <img alt="Built with Tauri 2 and Rust" src="https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20Rust-ffb347">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-green"></a>
@@ -81,7 +81,7 @@ cd src-tauri && cargo test --lib   # audio engine & DSP tests
 npm run tauri build    # installers in src-tauri/target/release/bundle
 ```
 
-Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). See the [user guide](GUIDE.md) for ASIO setup, bundling FFmpeg, and all keyboard shortcuts. Releases are built by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)) whenever a `v*` tag is pushed.
+Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). See the [user guide](GUIDE.md) for ASIO setup, bundling FFmpeg, and all keyboard shortcuts. Release builds can be run by hand from GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml), *Run workflow*). They produce a draft release.
 
 **Stack:** Tauri 2 · Rust (cpal, symphonia, hound, rtrb lock-free rings, obws, ebur128, rustfft, nnnoiseless) · Svelte 5 + TypeScript + Vite.
 

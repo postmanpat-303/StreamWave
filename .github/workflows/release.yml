@@ -1,8 +1,7 @@
 name: Release
 
+# Manual only (Actions > Release > Run workflow), so it never overwrites hand-uploaded release assets.
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -63,8 +62,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: StreamWave ${{ github.ref_name }}
+          tagName: v__VERSION__
+          releaseName: StreamWave v__VERSION__
           releaseBody: |
             See CHANGELOG.md. Windows: unsigned installer; if SmartScreen appears click "More info" then "Run anyway".
           releaseDraft: true
