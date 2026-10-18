@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareVersions, isNewer, shouldAutoCheck, shouldOffer, renderMarkdown, friendlyError, DAY_MS } from "./updates";
+import { compareVersions, isNewer, shouldAutoCheck, shouldOffer, renderMarkdown, friendlyError, DAY_MS, isMacUserAgent, parseLatestRelease, LATEST_RELEASE_API } from "./updates";
 
 describe("compareVersions", () => {
   it("orders release versions numerically", () => {
@@ -82,4 +82,26 @@ describe("renderMarkdown", () => {
 describe("friendlyError", () => {
   it("is non-scary for offline", () => expect(friendlyError(new Error("error sending request for url"))).toMatch(/internet connection/));
   it("has a generic fallback", () => expect(friendlyError("weird")).toMatch(/try again later/));
+});
+
+describe("macOS manual updates", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+  it("detects the macOS webview only", () => {
+    expect(isMacUserAgent(mac)).toBe(true);
+    expect(isMacUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/130.0")).toBe(false);
+    expect(isMacUserAgent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)")).toBe(false);
+  });
+  it("reads version and notes from GitHub's latest release", () => {
+    expect(parseLatestRelease({ tag_name: "v0.8.4", body: "## Notes", draft: false, prerelease: false })).toEqual({ version: "0.8.4", body: "## Notes" });
+    expect(parseLatestRelease({ tag_name: "v0.9.0" })).toEqual({ version: "0.9.0", body: "" });
+  });
+  it("ignores drafts, pre-releases and junk", () => {
+    expect(parseLatestRelease({ tag_name: "v0.9.0", draft: true })).toBeNull();
+    expect(parseLatestRelease({ tag_name: "v0.9.0", prerelease: true })).toBeNull();
+    expect(parseLatestRelease({ message: "Not Found" })).toBeNull();
+    expect(parseLatestRelease(null)).toBeNull();
+    expect(parseLatestRelease({ tag_name: "nightly" })).toBeNull();
+  });
+  it("uses this repo's API", () => expect(LATEST_RELEASE_API).toBe("https://api.github.com/repos/postmanpat-303/StreamWave/releases/latest"));
+  it("treats WebKit fetch failures as offline", () => expect(friendlyError(new TypeError("Load failed"))).toMatch(/internet connection/));
 });

@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/postmanpat-303/StreamWave?color=ff7a1a&label=release"></a>
   <a href="https://github.com/postmanpat-303/StreamWave/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/postmanpat-303/StreamWave/ci.yml?branch=main&label=CI"></a>
-  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux-2ec4d6">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-2ec4d6">
   <img alt="Built with Tauri 2 and Rust" src="https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20Rust-ffb347">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-green"></a>
   <a href="https://buymeacoffee.com/postmanpat"><img alt="Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95%20buy%20me%20a%20coffee-postmanpat-ff7a1a"></a>
@@ -19,10 +19,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><b>⬇ Download for Windows / Linux</b></a> ·
+  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><b>⬇ Download for Windows / Linux / macOS</b></a> ·
   <a href="https://postmanpat-303.github.io/StreamWave/">Website</a> ·
   <a href="GUIDE.md">User guide</a> ·
   <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for Windows (.exe)" src="https://img.shields.io/badge/Windows_10%2F11-.exe_installer-0078d4?style=for-the-badge"></a>
+  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for Linux (AppImage)" src="https://img.shields.io/badge/Linux-AppImage-e95420?style=for-the-badge"></a>
+  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for macOS 11+ (universal .dmg, Apple Silicon and Intel)" src="https://img.shields.io/badge/macOS_11%2B-universal_.dmg-555555?style=for-the-badge"></a>
 </p>
 
 <p align="center">
@@ -85,6 +91,13 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 
 ## ⬇ Install
 
+| | Windows | Linux | macOS |
+|---|---|---|---|
+| **System** | Windows 10 or 11, 64-bit | 64-bit (x86_64), any modern distro | macOS 11 Big Sur or later, Apple Silicon (M1 and newer) or Intel: one universal app |
+| **Download** | `StreamWave_<version>_x64-setup.exe` | `StreamWave_<version>_amd64.AppImage` (or `.deb`) | `StreamWave_<version>_universal.dmg` (or `.app.zip`) |
+| **FFmpeg** (formats other than WAV) | included | from your distro | `brew install ffmpeg` |
+| **Updates** | in-app | in-app (AppImage) | manual for now, the app tells you and links here |
+
 ### Windows 10/11
 1. Download **`StreamWave_<version>_x64-setup.exe`** from [Releases](https://github.com/postmanpat-303/StreamWave/releases/latest).
 2. Run it. No admin rights are needed; it installs for your user only. FFmpeg is included.
@@ -99,12 +112,16 @@ chmod +x StreamWave_*_amd64.AppImage
 Install FFmpeg from your distro (`sudo apt install ffmpeg`, `sudo dnf install ffmpeg-free`, `sudo pacman -S ffmpeg`) for formats other than WAV and for OBS video files. Audio works through PipeWire, PulseAudio or JACK.
 
 ### macOS 11+ (Apple Silicon and Intel)
-Download `StreamWave_<version>_universal.dmg` (or the `.app.zip`) from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest), open it and drag **StreamWave** into **Applications**.
-**The first time, right-click (or Control-click) StreamWave in Applications and choose Open, then click Open again.** The app isn't notarised by Apple yet, so a normal double-click is blocked the first time. After that it opens normally. Allow microphone access when macOS asks. For MP3/FLAC/Opus export and OBS video import, install FFmpeg (`brew install ffmpeg`).
+1. Download **`StreamWave_<version>_universal.dmg`** (or the `.app.zip`) from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest), open it and drag **StreamWave** into **Applications**. It's one universal app for Apple Silicon and Intel Macs.
+2. **First launch:** the app isn't notarised by Apple yet, so a normal double-click is blocked the first time. **Right-click (or Control-click) StreamWave in Applications, choose Open, then click Open again.** After that it opens normally.
+   On newer macOS (Sequoia 15 and later) there may be no Open button: click **Done**, then go to **System Settings → Privacy & Security**, scroll down to *"StreamWave" was blocked* and click **Open Anyway**, then confirm.
+3. Allow microphone access when macOS asks (you can change it later in System Settings → Privacy & Security → Microphone).
+4. For MP3/FLAC/Opus export and OBS video import, install FFmpeg (`brew install ffmpeg`). StreamWave finds Homebrew and MacPorts installs automatically.
 
 ### Updates
 From 0.6.0 on, StreamWave can update itself. Use **Help → Check for updates…** (or the button in About). It shows what's new and only downloads when you click **Download & install**. A quiet check also runs at startup, at most once a day, and you can turn it off in Settings. Updates are signed and verified before they're installed.
 The Windows installer and the AppImage can self-update. The `.deb` cannot, so update it from Releases. **0.5.x has no updater, so install 0.6.0 by hand once.**
+**On Mac, updates are manual for now.** The same check tells you when a new version is out and opens the download page; download the new `.dmg` and drag StreamWave into Applications to replace the old one. Your settings and projects are kept.
 
 ### Connect OBS
 In OBS: **Tools → WebSocket Server Settings → Enable WebSocket server**, copy the password, and paste it into StreamWave's first-run setup (or the OBS panel).
@@ -125,7 +142,9 @@ npm run tauri build    # installers in src-tauri/target/release/bundle
 
 Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). See the [user guide](GUIDE.md) for ASIO setup, bundling FFmpeg, and all keyboard shortcuts. Release builds can be run by hand from GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml), *Run workflow*). They produce a draft release.
 
-**Updater signing (maintainers):** release builds are signed for the in-app updater with a minisign key made by `npx tauri signer generate`. The public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). The private key is **never** committed. To build updater artifacts (`.sig` files) locally, set `TAURI_SIGNING_PRIVATE_KEY` (the key file path or its contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, then build with `--config src-tauri/tauri.windows-installer.conf.json` (Windows) or `--config src-tauri/tauri.updater.conf.json` (AppImage). Plain `npm run tauri build` doesn't need the key. For the GitHub release workflow, add both values as repository secrets with those names. Each release must attach a `latest.json` listing the `windows-x86_64` setup .exe and `linux-x86_64` AppImage with their signatures, because the app reads it from `releases/latest/download/latest.json`.
+**macOS (maintainers):** the universal Mac app can only be built on a Mac or GitHub's macOS runners: run the Release workflow with *platforms = macos* and a draft tag, and it builds `StreamWave_<version>_universal.dmg` and `.app.zip` ([`scripts/package-macos.sh`](scripts/package-macos.sh)), smoke-tests them and attaches them to that draft release with updated `SHA256SUMS.txt`. Locally on a Mac: Xcode Command Line Tools, `rustup target add aarch64-apple-darwin x86_64-apple-darwin`, then `scripts/package-macos.sh`.
+
+**Updater signing (maintainers):** release builds are signed for the in-app updater with a minisign key made by `npx tauri signer generate`. The public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). The private key is **never** committed. To build updater artifacts (`.sig` files) locally, set `TAURI_SIGNING_PRIVATE_KEY` (the key file path or its contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, then build with `--config src-tauri/tauri.windows-installer.conf.json` (Windows) or `--config src-tauri/tauri.updater.conf.json` (AppImage). Plain `npm run tauri build` doesn't need the key. For the GitHub release workflow, add both values as repository secrets with those names. Each release must attach a `latest.json` listing the `windows-x86_64` setup .exe and `linux-x86_64` AppImage with their signatures, because the app reads it from `releases/latest/download/latest.json`. It has no macOS entry: the Mac app reads the latest release from the GitHub API instead and links to the download page.
 
 **Stack:** Tauri 2 · Rust (cpal, symphonia, hound, rtrb lock-free rings, obws, ebur128, rustfft, nnnoiseless) · Svelte 5 + TypeScript + Vite.
 
@@ -140,6 +159,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [x] Audacity 3 (`.aup3`) project import (0.7.0)
 - [x] Spectrogram view, multi-track selection, label tracks, split / join clips (0.8.0)
 - [x] Right-click menu with effects on a selection; browser menu and shortcuts switched off (0.8.1)
+- [x] macOS universal build, Apple Silicon and Intel (0.8.4)
 - [ ] Code-signed Windows installer, notarised macOS build, Flatpak
 
 Ideas welcome; please open an issue.
@@ -159,7 +179,7 @@ The recording is written continuously with a header that is refreshed twice a se
 It isn't code-signed yet (certificates cost money). Click **More info → Run anyway**. The source and the CI build are public, so you can check exactly what you're installing.
 
 **Do I need FFmpeg?**
-The Windows installer includes it. On Linux, install it from your distro. Without FFmpeg you can still record, edit and export WAV.
+The Windows installer includes it. On Linux, install it from your distro. On Mac, `brew install ffmpeg`. Without FFmpeg you can still record, edit and export WAV.
 
 **Can StreamWave replace Audacity?**
 If you've used Audacity, you'll feel at home, with live effects, OBS sync and recordings that survive a crash.
@@ -168,7 +188,7 @@ You can bring existing work across: **File → Import Audacity Project…** (or 
 *Audacity® is a trademark of its respective owners. StreamWave is an independent project and isn't affiliated with or endorsed by Audacity or Muse Group. The importer was written from scratch and contains no Audacity code.*
 
 **Is there a Mac version?**
-Yes: a universal build (Apple Silicon and Intel, macOS 11 or later). It isn't notarised yet, so the first time, right-click the app and choose **Open**.
+Yes, since 0.8.4: one universal app for Apple Silicon and Intel Macs, macOS 11 or later. It isn't notarised yet, so the first time, right-click the app and choose **Open** (on newer macOS: **System Settings → Privacy & Security → Open Anyway**). Updates are manual on Mac for now; the app tells you when there's a new version.
 
 **Is it really free?**
 Yes, MIT-licensed, no accounts, no telemetry, everything runs locally.

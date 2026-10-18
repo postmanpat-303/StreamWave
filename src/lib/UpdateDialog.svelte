@@ -4,8 +4,8 @@
   import { check, type Update } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { openUrl } from "@tauri-apps/plugin-opener";
-  import { REPO_URL } from "./about";
-  import { friendlyError, renderMarkdown, shouldOffer } from "./updates";
+  import { RELEASES_URL, REPO_URL } from "./about";
+  import { LATEST_RELEASE_API, friendlyError, isMacUserAgent, parseLatestRelease, renderMarkdown, shouldOffer } from "./updates";
 
   let { quiet = false, skipped = null, busy = null, dirty = false, onskip, onchecked, onclose }: {
     /** startup check: render nothing unless an update should be offered */
@@ -22,11 +22,28 @@
   type Phase = "checking" | "latest" | "available" | "downloading" | "installing" | "ready" | "error";
   let phase = $state<Phase>("checking");
   let current = $state("");
+  /** the plugin's update (Windows/Linux); null on macOS */
   let update = $state<Update | null>(null);
+  /** what we show: from the plugin, or on macOS from GitHub's latest release */
+  let info = $state<{ version: string; body?: string | null; currentVersion: string } | null>(null);
   let message = $state("");
   let got = $state(0);
   let total = $state<number | null>(null);
   const isWindows = navigator.userAgent.includes("Windows");
+  // No in-app updater on macOS yet (latest.json has no Mac entry): check GitHub's latest release and link to the download page.
+  const isMac = isMacUserAgent(navigator.userAgent);
+
+  async function macLatest(): Promise<{ version: string; body: string }> {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const r = await fetch(LATEST_RELEASE_API, { headers: { Accept: "application/vnd.github+json" }, signal: ctl.signal });
+      if (!r.ok) throw new Error(`latest release: HTTP ${r.status}${r.status === 404 ? " not found" : ""}`);
+      const rel = parseLatestRelease(await r.json());
+      if (!rel) throw new Error("latest release: not found");
+      return rel;
+    } finally { clearTimeout(t); }
+  }
   const pct = $derived(total ? Math.min(100, Math.round((got / total) * 100)) : null);
   const mb = (n: number) => (n / 1048576).toFixed(1);
 
@@ -34,9 +51,17 @@
     (async () => {
       try { current = await getVersion(); } catch {}
       try {
+        if (isMac) {
+          const rel = await macLatest();
+          onchecked();
+          if (current && shouldOffer(rel.version, current, skipped, !quiet)) { info = { version: rel.version, body: rel.body, currentVersion: current }; phase = "available"; }
+          else if (quiet) onclose();
+          else phase = "latest";
+          return;
+        }
         const u = await check({ timeout: 20000 });
         onchecked();
-        if (u && shouldOffer(u.version, current || u.currentVersion, skipped, !quiet)) { update = u; phase = "available"; }
+        if (u && shouldOffer(u.version, current || u.currentVersion, skipped, !quiet)) { update = u; info = { version: u.version, body: u.body, currentVersion: u.currentVersion }; phase = "available"; }
         else if (quiet) onclose();
         else phase = "latest";
       } catch (e) {
@@ -65,7 +90,8 @@
       message = friendlyError(e); phase = "error";
     }
   }
-  function skip() { if (update) onskip(update.version); onclose(); }
+  function skip() { if (info) onskip(info.version); onclose(); }
+  function openDownloads() { openUrl(RELEASES_URL).catch(() => openUrl(REPO_URL).catch(() => {})); onclose(); }
   async function restart() { try { await relaunch(); } catch (e) { message = `Please restart StreamWave yourself to finish updating. (${e})`; phase = "error"; } }
 </script>
 
@@ -88,13 +114,20 @@
         <button class="ghost" onclick={() => openUrl(REPO_URL).catch(() => {})}>Open GitHub</button>
         <button class="primary" onclick={onclose}>OK</button>
       </div>
-    {:else if update}
+    {:else if info}
       <h2 id="upd-title">A new version of StreamWave is available</h2>
-      <div class="vers"><span>Installed: <b>{current || update.currentVersion}</b></span><span>→</span><span>New: <b class="new">{update.version}</b></span></div>
-      {#if update.body}
-        <div class="notes">{@html renderMarkdown(update.body)}</div>
+      <div class="vers"><span>Installed: <b>{current || info.currentVersion}</b></span><span>→</span><span>New: <b class="new">{info.version}</b></span></div>
+      {#if info.body}
+        <div class="notes">{@html renderMarkdown(info.body)}</div>
       {/if}
-      {#if phase === "available"}
+      {#if phase === "available" && isMac}
+        <p class="muted">On Mac, updates are installed by hand for now: download the new <b>.dmg</b>, open it and drag StreamWave into Applications to replace the old one. Your settings and projects are kept.</p>
+        <div class="actions">
+          <button class="ghost" onclick={skip}>Skip this version</button>
+          <button class="ghost" onclick={onclose}>Not now</button>
+          <button class="primary" onclick={openDownloads}>Open download page</button>
+        </div>
+      {:else if phase === "available"}
         {#if busy}<p class="warn">{busy}</p>
         {:else if dirty}<p class="warn">You have unsaved changes. Save your project first, because StreamWave restarts to install the update.</p>{/if}
         <div class="actions">
@@ -109,7 +142,7 @@
         <div class="bar"><div style:width="100%"></div></div>
         <p class="muted">{isWindows ? "Installing… StreamWave will close and the installer will reopen it when it's done." : "Installing…"}</p>
       {:else if phase === "ready"}
-        <p>✅ StreamWave {update.version} is installed. Restart to start using it.</p>
+        <p>✅ StreamWave {info.version} is installed. Restart to start using it.</p>
         <div class="actions">
           <button class="ghost" onclick={onclose}>Later</button>
           <button class="primary" onclick={restart}>Restart now</button>

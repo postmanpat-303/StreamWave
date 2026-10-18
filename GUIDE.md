@@ -3,6 +3,20 @@
 A friendly, non-destructive audio recorder and editor: one-button recording, live meters, waveforms, and tight OBS Studio integration.
 Built with **Tauri 2** (Rust audio engine) and **Svelte 5 + TypeScript** (Vite).
 
+## Download and system requirements
+StreamWave runs on **Windows, Linux and macOS**. Get it from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest).
+
+| | Windows | Linux | macOS |
+|---|---|---|---|
+| **System** | Windows 10 or 11, 64-bit | 64-bit (x86_64), any modern distro (PipeWire, PulseAudio or JACK) | macOS 11 Big Sur or later; one universal app for Apple Silicon and Intel |
+| **File** | `StreamWave_<version>_x64-setup.exe` | `StreamWave_<version>_amd64.AppImage` or `.deb` | `StreamWave_<version>_universal.dmg` or `.app.zip` |
+| **FFmpeg** | included | `sudo apt install ffmpeg` (or your distro's package) | `brew install ffmpeg` |
+| **Updates** | in-app (Help → Check for updates) | in-app for the AppImage | manual for now: the check tells you about a new version and opens the download page |
+
+**First launch on Windows:** the installer isn't code-signed yet. If SmartScreen appears, click **More info → Run anyway**.
+**First launch on Mac:** open the `.dmg` and drag StreamWave into Applications. The app isn't notarised by Apple yet, so the first time **right-click (or Control-click) StreamWave and choose Open**, then click Open again. On newer macOS (Sequoia 15 and later), click Done, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to *"StreamWave" was blocked*. After that it opens normally. Allow microphone access when asked. To update on Mac, download the new `.dmg` and drag StreamWave into Applications again to replace the old one; settings and projects are kept.
+On Mac, shortcuts shown here with **Ctrl** use **⌘ Cmd**.
+
 ## What's in it (v0.5, see CHANGELOG.md)
 - **One-button recording** (big red button or `R`) to 32-bit float WAV on a dedicated audio thread. The audio callback is lock-free: samples go into an `rtrb` ring buffer, and a writer thread streams them to disk.
 - **Crash-safe recordings**: files are written as `*.partial.wav` and the header is refreshed every 0.5 s. At startup, any leftover partial files get their headers repaired and are renamed `*.recovered.wav`, then added to the project automatically.
@@ -72,12 +86,13 @@ Studio Sound analyses the selected track and builds an editable effect chain:
 
 ## Export
 Use **Export** (Ctrl+E) in the side panel: WAV (16/24-bit with dither, or 32-bit float), FLAC, WavPack, MKA, MP3, Ogg Vorbis, Opus, WebM, Speex. You can set bitrate or quality, sample rate, mono/stereo, and tags (title, artist, album, year, genre, comment).
-WAV is written by StreamWave itself. All other formats use **FFmpeg**, which StreamWave finds at runtime: first next to the StreamWave executable, then on `PATH`. If it isn't found, the panel explains this and only WAV is offered.
+WAV is written by StreamWave itself. All other formats use **FFmpeg**, which StreamWave finds at runtime: first next to the StreamWave executable, then on `PATH` (on Mac also the Homebrew and MacPorts folders `/opt/homebrew/bin`, `/usr/local/bin` and `/opt/local/bin`, because apps opened from Finder get a short `PATH`). If it isn't found, the panel explains this and only WAV is offered.
 
 ### Getting / bundling FFmpeg (LGPL build)
 - **Windows**: download an *LGPL shared* build (e.g. the `ffmpeg-n7.x-latest-win64-lgpl-shared` zip from github.com/BtbN/FFmpeg-Builds). Put `ffmpeg.exe` and its DLLs next to `streamwave.exe`, or on PATH.
   - Note: LGPL builds leave out GPL-only encoders. Check `ffmpeg -encoders` for `libmp3lame` (LGPL), `libopus`, `libvorbis` and `libspeex` (BSD). MP3 via LAME is LGPL and normally included.
 - **Linux**: `sudo apt install ffmpeg` / `sudo dnf install ffmpeg-free` / `sudo pacman -S ffmpeg`.
+- **macOS**: `brew install ffmpeg` (or MacPorts `sudo port install ffmpeg`).
 - **To bundle it with the installer**: copy the binary to `src-tauri/binaries/ffmpeg-<target-triple>(.exe)`, e.g. `ffmpeg-x86_64-pc-windows-msvc.exe`, and add `"externalBin": ["binaries/ffmpeg"]` under `bundle` in `tauri.conf.json`. Ship FFmpeg's LGPL licence text and offer its source, as the LGPL requires. The Windows installer config `src-tauri/tauri.windows-installer.conf.json` does exactly this (CI downloads the LGPL build automatically).
 
 ## Never miss a take + mic check
@@ -124,6 +139,15 @@ Audio goes through ALSA. PulseAudio and PipeWire show up as the `pulse` / `pipew
 `npm run tauri build` produces **AppImage, .deb and .rpm** packages (rpm needs `rpm-build`).
 
 **Flatpak (follow-up):** not configured yet. The plan is a `com.del.streamwave.yml` manifest on `org.gnome.Platform` 47 with `--socket=pulseaudio --device=all --filesystem=xdg-music --filesystem=xdg-videos:ro` (the last one so OBS recordings can be read), built from the release binary.
+
+## Build on macOS
+Needs a Mac with **Xcode Command Line Tools** (`xcode-select --install`), Rust and Node.js 20+. For the universal app:
+```
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm ci
+scripts/package-macos.sh     # dist/StreamWave_<version>_universal.dmg and .app.zip
+```
+The app is ad-hoc signed (so it runs on Apple Silicon) but not notarised. Without a Mac, use the GitHub **Release** workflow with *platforms = macos* and a draft tag: it builds, smoke-tests and attaches the Mac files to that draft release.
 
 ## Layout
 ```

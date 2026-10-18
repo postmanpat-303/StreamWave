@@ -50,12 +50,29 @@ export function shouldOffer(latest: string, current: string, skipped: string | n
 /** Friendly wording for a failed check (offline, GitHub down, no latest.json yet, unsupported package…). */
 export function friendlyError(e: unknown): string {
   const s = String(e ?? "").toLowerCase();
-  if (/network|dns|connect|offline|timed? ?out|resolve|unreachable|error sending request/.test(s))
+  if (/network|dns|connect|offline|timed? ?out|resolve|unreachable|error sending request|load failed|failed to fetch|abort/.test(s))
     return "Couldn't reach GitHub to check for updates. Check your internet connection and try again later.";
   if (/404|not found|release json|could not fetch a valid/.test(s))
     return "Couldn't find update information right now. Please try again later.";
   if (/signature/.test(s)) return "The downloaded update couldn't be verified, so it wasn't installed. Please try again later or download it from GitHub.";
   return "Couldn't check for updates right now. Please try again later.";
+}
+
+/** GitHub's "latest release" API (CORS-enabled, no token needed). Used on macOS, where there is no in-app updater yet. */
+export const LATEST_RELEASE_API = "https://api.github.com/repos/postmanpat-303/StreamWave/releases/latest";
+
+/** True in the macOS app (WKWebView user agent). Updates are manual there for now: latest.json has no macOS entry. */
+export const isMacUserAgent = (ua: string) => /Macintosh|Mac OS X/.test(ua ?? "") && !/iPhone|iPad|Windows|Linux/.test(ua ?? "");
+
+export interface ReleaseInfo { version: string; body: string }
+
+/** Version and notes from GitHub's latest-release JSON; null for drafts, pre-releases or anything unexpected. */
+export function parseLatestRelease(j: unknown): ReleaseInfo | null {
+  const o = (j ?? {}) as { tag_name?: unknown; body?: unknown; draft?: unknown; prerelease?: unknown };
+  if (typeof o.tag_name !== "string" || o.draft || o.prerelease) return null;
+  const version = o.tag_name.trim().replace(/^v/i, "");
+  if (!/^\d+(\.\d+)+/.test(version)) return null;
+  return { version, body: typeof o.body === "string" ? o.body : "" };
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");

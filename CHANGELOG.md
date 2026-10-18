@@ -2,6 +2,14 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.8.4 (2026-10-18)
+### Added
+- **StreamWave for Mac.** One universal app for Apple Silicon and Intel Macs, macOS 11 Big Sur or later, as `StreamWave_0.8.4_universal.dmg` (drag into Applications) and `StreamWave_0.8.4_universal.app.zip`. It's ad-hoc signed but not notarised yet, so the first time right-click the app and choose **Open** (on newer macOS: **System Settings → Privacy & Security → Open Anyway**). FFmpeg is found in the Homebrew and MacPorts folders too (`brew install ffmpeg`), because apps opened from Finder get a short `PATH`.
+- The website, README and user guide show macOS next to Windows and Linux, with system requirements and the first-launch steps.
+
+### Changed
+- **Updates on Mac are manual for now.** There's no in-app updater on Mac yet, so instead of a failed check, **Help → Check for updates** (and the quiet startup check) reads the latest release from GitHub and, when there's a newer version, shows what's new with an **Open download page** button instead of Download & install. Windows and Linux keep the signed in-app updater; `latest.json` still lists only those two.
+
 ## 0.8.3 (2026-10-18)
 ### Changed
 - The author, publisher and copyright name is now **Del (postmanpat)** everywhere: the About screen, the Windows installer and the "Publisher" column in Add/Remove Programs, the licence, the website and the docs. The app identifier is unchanged, so settings, projects and updates carry over.
