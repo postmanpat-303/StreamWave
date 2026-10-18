@@ -1,5 +1,6 @@
-; StreamWave: stock Tauri 2.12.3 NSIS template with one fix. The previous install dir is found
-; robustly (see StreamWavePrevInstallDir), and InstallLocation is written without quotes.
+; StreamWave: stock Tauri 2.12.3 NSIS template with these fixes. The previous install dir is found
+; robustly (see StreamWavePrevInstallDir), InstallLocation is written without quotes, and stale
+; Software\<old publisher>\<product> keys from earlier publisher names are removed on install.
 Unicode true
 ManifestDPIAware true
 ; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
@@ -698,6 +699,7 @@ Section Install
 
   ; Save $INSTDIR in registry for future installations
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR
+  Call StreamWaveCleanOldPublisherKeys ; StreamWave: drop keys left by earlier publisher names
 
   !if "${INSTALLMODE}" == "both"
     ; Save install mode to be selected by default for the next installation such as updating
@@ -920,15 +922,19 @@ FunctionEnd
 
 ; --- StreamWave fix ---------------------------------------------------------------
 ; Stock Tauri reads the previous install dir only from HKCU\Software\<publisher>\<product>.
-; That key moves when the publisher changes (0.5.0 used "Del", 0.5.1+ "Derek Heasley"),
-; so $4 came back empty and the old uninstaller was started as `uninstall.exe _?=`
-; ("Error launching installer"). Try, in order, and accept a dir only if it holds uninstall.exe:
-;   1. HKCU/HKLM Software\<publisher>\<product> (stock)
+; That key moves whenever the publisher changes (0.5.0 used "Del", 0.5.1-0.8.2 another name,
+; 0.8.3+ "Del (postmanpat)"), so $4 came back empty and the old uninstaller was started as
+; `uninstall.exe _?=` ("Error launching installer"). Try, in order, and accept a dir only if
+; it holds uninstall.exe:
+;   1. Software\<publisher>\<product> (stock, current publisher)
 ;   2. Software\Del\<product> (publisher used by 0.5.0)
-;   3. Uninstall\<product> InstallLocation (quotes stripped)
-;   4. parent dir of Uninstall\<product> UninstallString (quotes stripped)
-;   5. $LOCALAPPDATA\<product> (default per-user location)
-; Result in $4 ("" if nothing valid was found).
+;   3. Software\<any publisher>\<product> whose dir also holds <product>.exe. This finds
+;      installs made under any earlier publisher name without hard-coding those names.
+;   4. Uninstall\<product> InstallLocation (quotes stripped)
+;   5. parent dir of Uninstall\<product> UninstallString (quotes stripped)
+;   6. $LOCALAPPDATA\<product> (default per-user location)
+; Result in $4 ("" if nothing valid was found). The Add/Remove Programs entry itself lives
+; at Uninstall\<product>, which doesn't depend on the publisher, so it is simply rewritten.
 !macro StreamWaveUnquote VAR
   StrCpy $R8 ${VAR} 1
   ${If} $R8 == '"'
@@ -951,12 +957,30 @@ FunctionEnd
 !macroend
 Function StreamWavePrevInstallDir
   Push $R8
+  Push $R7
+  Push $R9
   ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
   !insertmacro StreamWaveUnquote $4
   !insertmacro StreamWaveTryDir
   ReadRegStr $4 SHCTX "Software\Del\${PRODUCTNAME}" ""
   !insertmacro StreamWaveUnquote $4
   !insertmacro StreamWaveTryDir
+  StrCpy $R9 0
+  sw_enum:
+    ClearErrors
+    EnumRegKey $R7 SHCTX "Software" $R9
+    StrCmp $R7 "" sw_enum_done
+    IntOp $R9 $R9 + 1
+    IntCmp $R9 5000 sw_enum_done
+    ReadRegStr $4 SHCTX "Software\$R7\${PRODUCTNAME}" ""
+    StrCmp $4 "" sw_enum
+    !insertmacro StreamWaveUnquote $4
+    ${If} ${FileExists} "$4\uninstall.exe"
+    ${AndIf} ${FileExists} "$4\${MAINBINARYNAME}.exe"
+      Goto sw_found
+    ${EndIf}
+    Goto sw_enum
+  sw_enum_done:
   ReadRegStr $4 SHCTX "${UNINSTKEY}" "InstallLocation"
   !insertmacro StreamWaveUnquote $4
   !insertmacro StreamWaveTryDir
@@ -970,9 +994,43 @@ Function StreamWavePrevInstallDir
   !insertmacro StreamWaveTryDir
   StrCpy $4 ""
   sw_found:
+  Pop $R9
+  Pop $R7
   Pop $R8
   ; failed ReadRegStr lookups above set the error flag; PageLeaveReinstall treats
   ; ${Errors} after ExecWait as "uninstaller failed to launch", so clear it here
+  ClearErrors
+FunctionEnd
+
+; After an install or update, remove Software\<other publisher>\<product> keys that point at
+; this same install dir (left behind by versions published under an earlier name), then the
+; publisher key itself if it is now empty. Keys of other apps, or pointing elsewhere, are kept.
+Function StreamWaveCleanOldPublisherKeys
+  Push $R7
+  Push $R8
+  Push $R9
+  Push $4
+  StrCpy $R9 0
+  sw_clean_next:
+    ClearErrors
+    EnumRegKey $R7 SHCTX "Software" $R9
+    StrCmp $R7 "" sw_clean_done
+    IntOp $R9 $R9 + 1
+    IntCmp $R9 5000 sw_clean_done
+    StrCmp $R7 "${MANUFACTURER}" sw_clean_next
+    ReadRegStr $4 SHCTX "Software\$R7\${PRODUCTNAME}" ""
+    StrCmp $4 "" sw_clean_next
+    !insertmacro StreamWaveUnquote $4
+    StrCmp $4 $INSTDIR 0 sw_clean_next
+      DeleteRegKey SHCTX "Software\$R7\${PRODUCTNAME}"
+      DeleteRegKey /ifempty SHCTX "Software\$R7"
+      StrCpy $R9 0 ; keys were removed, so enumerate again from the start
+      Goto sw_clean_next
+  sw_clean_done:
+  Pop $4
+  Pop $R9
+  Pop $R8
+  Pop $R7
   ClearErrors
 FunctionEnd
 ; --- end StreamWave fix ------------------------------------------------------------

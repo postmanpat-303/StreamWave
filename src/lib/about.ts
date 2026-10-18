@@ -5,4 +5,4 @@ export const YOUTUBE_URL = "https://www.youtube.com/@whatgoesaround1551";
 export const REPO_URL = "https://github.com/postmanpat-303/StreamWave";
 export const ALLOWED_LINKS = [COFFEE_URL, PAYPAL_URL, YOUTUBE_URL, REPO_URL] as const;
 export type AllowedLink = (typeof ALLOWED_LINKS)[number];
-export const AUTHOR = "Derek Heasley";
+export const AUTHOR = "Del (postmanpat)";

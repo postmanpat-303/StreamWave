@@ -1,10 +1,23 @@
 :root { --bg:#0e1117; --panel:#161b24; --panel2:#1d2430; --line:#2a3342; --text:#e6ebf2; --muted:#8a96a8; --accent:#19d3b0; --rec:#ff3b5c; --warn:#ffb020;
-  font-family: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif; color: var(--text); background: var(--bg); }
+  font-family: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif; color: var(--text); background: var(--bg);
+  /* dark native form controls, scrollbars and popups (WebView2 and WebKitGTK) */
+  color-scheme: dark; }
 * { box-sizing: border-box; }
 body { margin: 0; height: 100vh; overflow: hidden; }
 button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button:disabled { opacity: .45; cursor: default; }
 input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; width: 100%; }
+/* Selects are drawn by us, not the platform theme: WebKitGTK on Linux otherwise paints a white
+   GTK combo box with our light text on it, so the chosen value was invisible. */
+select { -webkit-appearance: none; appearance: none; background-color: var(--bg); color: var(--text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a96a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 10px 6px;
+  padding-right: 28px; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+select:hover { border-color: var(--accent); }
+select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+select:disabled { opacity: .45; cursor: default; }
+option, optgroup { background-color: var(--panel); color: var(--text); }
+option:checked { background-color: var(--panel2); color: var(--accent); }
 label { font-size: 12px; color: var(--muted); display: block; margin: 8px 0 4px; }
 h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }

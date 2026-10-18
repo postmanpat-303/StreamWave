@@ -2,6 +2,14 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.8.3 (2026-10-18)
+### Changed
+- The author, publisher and copyright name is now **Del (postmanpat)** everywhere: the About screen, the Windows installer and the "Publisher" column in Add/Remove Programs, the licence, the website and the docs. The app identifier is unchanged, so settings, projects and updates carry over.
+
+### Fixed
+- **Dropdowns were unreadable on Linux.** WebKitGTK drew every drop-down list (microphone, project, export format and options, effect picker, spectrogram scale and colours) as a white box with light text, so the chosen value was invisible. Dropdowns are now drawn by StreamWave in the dark theme on Linux and Windows, with a dark, readable option list, and the app declares `color-scheme: dark` for native controls.
+- **Windows upgrades after a publisher change.** The installer now finds an existing install under the current publisher key, the 0.5.0 "Del" key, and any earlier publisher key that points at a StreamWave install (plus the Add/Remove Programs entry and `%LOCALAPPDATA%\StreamWave` as before). After installing it removes the leftover key from the old publisher name, so upgrades stay in the same folder and Add/Remove Programs shows a single StreamWave entry. Tested under Wine: 0.8.2 → 0.8.3 via the in-app updater's `/P /UPDATE` and via the interactive "uninstall before installing" path, 0.5.0 → 0.8.3, and an install in a custom folder.
+
 ## 0.8.2 (2026-10-18)
 ### Fixed
 - **Right-click submenus (Effects, Track) could be impossible to reach** when the menu had to be moved to fit the window, such as when right-clicking near the bottom. Moving the mouse diagonally towards the submenu crossed another menu item and closed it. Menus now use hover intent (a "safe triangle"): while the pointer is heading for an open submenu, crossing other items doesn't close it. If the pointer stops on another item, that item takes over after a moment.
@@ -63,7 +71,7 @@ All notable changes to StreamWave are documented here. The format is loosely bas
 
 ## 0.6.1 (2026-10-18)
 ### Added
-- **▶ YouTube channel** button in About, next to Buy Me a Coffee and PayPal. It opens [Derek's channel](https://www.youtube.com/@whatgoesaround1551), with demos and promos for his apps. The URL is added to the app's link allowlist, which now has four exact URLs.
+- **▶ YouTube channel** button in About, next to Buy Me a Coffee and PayPal. It opens [Del's channel](https://www.youtube.com/@whatgoesaround1551), with demos and promos for his apps. The URL is added to the app's link allowlist, which now has four exact URLs.
 - **Watch the promo:** a clickable promo thumbnail in the README and on the website, linking to https://youtu.be/ZGsCz0rjXeg, plus YouTube channel links next to the donation links.
 
 ## 0.6.0 (2026-10-17)
@@ -88,7 +96,7 @@ All notable changes to StreamWave are documented here. The format is loosely bas
 
 ## 0.5.3 (2026-10-17)
 ### Fixed
-- **Windows upgrade from 0.5.0 failed with "Error launching installer".** When upgrading, the installer finds the old version's folder and runs its uninstaller as `uninstall.exe _?=<folder>`. It only looked for that folder under `HKCU\Software\<publisher>\StreamWave`. 0.5.0 was published as "Del" and 0.5.1+ as "Derek Heasley", so the lookup came back empty and the old uninstaller was started with `_?=` and no folder.
+- **Windows upgrade from 0.5.0 failed with "Error launching installer".** When upgrading, the installer finds the old version's folder and runs its uninstaller as `uninstall.exe _?=<folder>`. It only looked for that folder under `HKCU\Software\<publisher>\StreamWave`. 0.5.0 was published as "Del" and 0.5.1+ under a different publisher name, so the lookup came back empty and the old uninstaller was started with `_?=` and no folder.
 - The installer now checks, in order, accepting a folder only if it contains `uninstall.exe`:
   1. the publisher key
   2. the old `Software\Del\StreamWave` key
@@ -108,13 +116,13 @@ All notable changes to StreamWave are documented here. The format is loosely bas
 
 ## 0.5.1 (2026-10-17) – Windows installer withdrawn, use 0.5.2
 ### Added
-- **About StreamWave** (Help → About StreamWave, or the link at the bottom of Settings). Shows the logo, version, "Created by Derek Heasley", the MIT licence and FFmpeg LGPL notice, the GitHub link, and a **☕ Buy me a coffee** button.
+- **About StreamWave** (Help → About StreamWave, or the link at the bottom of Settings). Shows the logo, version, "Created by Del (postmanpat)", the MIT licence and FFmpeg LGPL notice, the GitHub link, and a **☕ Buy me a coffee** button.
 - External links open in the system browser through the Tauri opener plugin. They are limited to an allowlist of exactly two URLs (the PayPal.me donation link and the GitHub repo).
 - Donation link in the README, the website footer and GitHub Sponsors (`FUNDING.yml`).
 ### Fixed
 - Windows installer: Start-menu and desktop shortcuts now point at an explicit icon (`streamwave.ico`, installed next to the app) instead of `,0`. Shortcuts from older installs are rewritten on upgrade, the uninstaller uses the whale icon too, and the shell icon cache is refreshed after install/uninstall (`SHChangeNotify` + `ie4uinit -show`), so Windows stops showing a stale cached icon.
 ### Changed
-- Copyright: Derek Heasley.
+- Copyright: Del (postmanpat).
 
 ## 0.5.0 - first public release (2026-10-17)
 

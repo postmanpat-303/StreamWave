@@ -27,7 +27,7 @@
     <button class="coffee" onclick={() => go(COFFEE_URL)}>☕ Buy me a coffee</button>
     <div class="row">
       <button class="paypal" onclick={() => go(PAYPAL_URL)}>Donate via PayPal</button>
-      <button class="paypal yt" onclick={() => go(YOUTUBE_URL)} title="Demos and promos for Derek's apps">▶ YouTube channel</button>
+      <button class="paypal yt" onclick={() => go(YOUTUBE_URL)} title="Demos and promos for Del's apps">▶ YouTube channel</button>
     </div>
     {#if onupdates}<button class="upd" onclick={onupdates}>⟳ Check for updates…</button>{/if}
     <button class="link" onclick={() => go(REPO_URL)}>GitHub: postmanpat-303/StreamWave ↗</button>

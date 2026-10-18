@@ -39,7 +39,7 @@
 
 <p align="center">
   <a href="https://youtu.be/ZGsCz0rjXeg"><img src="assets/promo-thumb.jpg" alt="StreamWave promo video on YouTube: play button over a humpback whale and calf swimming through glowing orange sound rings, with the StreamWave logo and 'FREE for Windows &amp; Linux'" width="720"></a><br>
-  <a href="https://youtu.be/ZGsCz0rjXeg"><b>▶ Watch the StreamWave promo on YouTube</b></a> · more demos on <a href="https://www.youtube.com/@whatgoesaround1551">Derek's YouTube channel</a>
+  <a href="https://youtu.be/ZGsCz0rjXeg"><b>▶ Watch the StreamWave promo on YouTube</b></a> · more demos on <a href="https://www.youtube.com/@whatgoesaround1551">Del's YouTube channel</a>
 </p>
 
 ---
@@ -66,7 +66,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 
 ## 📸 Screenshots
 
-*Real screenshots of StreamWave 0.8.2 on Linux, using a demo episode with self-generated voice and music. Click any image for full size.*
+*Real screenshots of StreamWave 0.8.3 on Linux, using a demo episode with self-generated voice and music. Click any image for full size.*
 
 <table>
 <tr>
@@ -79,7 +79,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 </tr>
 <tr>
 <td width="50%" valign="top"><a href="assets/screenshots/06-export.png"><img src="assets/screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="100%"></a><br><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</td>
-<td width="50%" valign="top"><a href="assets/screenshots/07-about.png"><img src="assets/screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.2, created by Derek Heasley, a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="100%"></a><br><b>Free and open source.</b> Made by Derek Heasley. If it saves you time, <a href="https://buymeacoffee.com/postmanpat">buy me a coffee</a> ☕</td>
+<td width="50%" valign="top"><a href="assets/screenshots/07-about.png"><img src="assets/screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.3, created by Del (postmanpat), a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="100%"></a><br><b>Free and open source.</b> Made by Del (postmanpat). If it saves you time, <a href="https://buymeacoffee.com/postmanpat">buy me a coffee</a> ☕</td>
 </tr>
 </table>
 
@@ -171,11 +171,11 @@ Yes, MIT-licensed, no accounts, no telemetry, everything runs locally.
 
 ## ☕ Support
 
-StreamWave is free and built in spare time by **Derek Heasley**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Demos and promos for my apps are on [YouTube](https://www.youtube.com/@whatgoesaround1551). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
+StreamWave is free and built in spare time by **Del (postmanpat)**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Demos and promos for my apps are on [YouTube](https://www.youtube.com/@whatgoesaround1551). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
 
 ## 📄 Licence
 
-StreamWave is © 2026 Derek Heasley and released under the [MIT Licence](LICENSE).
+StreamWave is © 2026 Del (postmanpat) and released under the [MIT Licence](LICENSE).
 
 The Windows installer bundles **FFmpeg** (`ffmpeg.exe`, `ffprobe.exe`), an LGPL build from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), as separate, unmodified programs. FFmpeg is licensed under the **GNU LGPL** (not MIT). Its licence text and source links are installed in the `licenses` folder next to StreamWave, and you can replace those binaries with any other FFmpeg build. FFmpeg is a trademark of Fabrice Bellard. RNNoise (via `nnnoiseless`) is BSD-3-Clause; other Rust/npm dependencies keep their own permissive licences.
 

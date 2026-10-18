@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import capRaw from "../../src-tauri/capabilities/default.json?raw";
-import { ALLOWED_LINKS, COFFEE_URL, PAYPAL_URL, REPO_URL, YOUTUBE_URL } from "./about";
+import tauriConfRaw from "../../src-tauri/tauri.conf.json?raw";
+import licenseRaw from "../../LICENSE?raw";
+import { ALLOWED_LINKS, AUTHOR, COFFEE_URL, PAYPAL_URL, REPO_URL, YOUTUBE_URL } from "./about";
 
 describe("about links", () => {
   it("are https and exactly the opener allowlist in the Tauri capability", () => {
@@ -17,5 +19,13 @@ describe("about links", () => {
     expect(YOUTUBE_URL).toBe("https://www.youtube.com/@whatgoesaround1551");
     expect(PAYPAL_URL).toBe("https://paypal.me/derekh100");
     expect(REPO_URL).toBe("https://github.com/postmanpat-303/StreamWave");
+  });
+
+  it("uses one public author name everywhere (app, installer publisher, copyright, licence)", () => {
+    const conf = JSON.parse(tauriConfRaw);
+    expect(AUTHOR).toBe("Del (postmanpat)");
+    expect(conf.bundle.publisher).toBe(AUTHOR);
+    expect(conf.bundle.copyright).toBe(`© 2026 ${AUTHOR}, MIT licence`);
+    expect(licenseRaw).toContain(`Copyright (c) 2026 ${AUTHOR}`);
   });
 });

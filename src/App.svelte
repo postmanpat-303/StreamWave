@@ -977,7 +977,7 @@
   .track.multi { box-shadow: inset 3px 0 0 #4da3ff; }
   .vbtn { padding: 1px 7px; border-radius: 10px; background: #ffffff0d; border: 1px solid #ffffff1a; cursor: pointer; } .vbtn.on { border-color: #19d3b0; color: #19d3b0; }
   .rename { width: 180px; padding: 2px 6px; font-weight: 600; }
-  .vsel { padding: 0 4px; height: 22px; width: auto !important; flex: none; min-width: 0; }
+  .vsel { padding: 0 20px 0 6px; background-position: right 6px center; height: 22px; width: auto !important; flex: none; min-width: 0; }
   .tag.labels { background: #ffb02022; color: #ffd27a; }
   .tag.audacity { background: #3d8bff22; color: #7fb2ff; }
   button.tag.flag { border: 1px solid #ffb02066; background: #ffb02014; color: var(--warn); cursor: pointer; padding: 0 6px; font-size: 11px; }
