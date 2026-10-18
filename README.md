@@ -53,7 +53,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | ⏪ **Never miss a take** | A rolling buffer (up to 60 s) keeps listening while armed. Said something great before you hit record? **Save last 30 s.** |
 | 🎛 **Live effects** | EQ, compressor, gate, noise reduction, de-esser, limiter, loudness, fades. Every slider and A/B toggle is heard **instantly during playback**, and export renders through the exact same engine, so what you hear is what you get (tested bit-for-bit). |
 | 🛟 **Crash-safe recording** | Takes are streamed to disk and the header is refreshed every half second. Power cut? Crash? The recording is repaired and offered back at the next start. Unplugged USB mic? The take so far is saved. |
-| 📦 **All open formats** | Import WAV, FLAC, MP3, Ogg, Opus, AAC/M4A, AIFF and the audio inside MP4/MKV. Export WAV (16/24/32-bit float), FLAC, WavPack, MP3, Ogg Vorbis, Opus, WebM, MKA, with tags. |
+| 📦 **All open formats** | Import Audacity 3 projects (`.aup3`, read-only), WAV, FLAC, MP3, Ogg, Opus, AAC/M4A, AIFF and the audio inside MP4/MKV. Export WAV (16/24/32-bit float), FLAC, WavPack, MP3, Ogg Vorbis, Opus, WebM, MKA, with tags. |
 | 🤝 **Shared mic, always** | StreamWave **never takes exclusive control** of your microphone. OBS, Discord and your browser keep working with the same mic at the same time. |
 | ✂️ **Non-destructive editing** | Cut, copy, paste and delete with full undo history; your original files are never touched. `.twt` project files with autosave and crash recovery. |
 | 🩺 **Live mic check** | Friendly warnings for clipping, too quiet, dead channel, DC offset and 50/60 Hz hum, before they ruin a recording. |
@@ -124,6 +124,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
 - [ ] Multi-track mixing view, clip fades and crossfades
 - [x] In-app update check (0.6.0)
+- [x] Audacity 3 (`.aup3`) project import (0.7.0)
 - [ ] Code-signed Windows installer, Flatpak, macOS build
 
 Ideas welcome; please open an issue.
@@ -144,6 +145,12 @@ It isn't code-signed yet (certificates cost money). Click **More info → Run an
 
 **Do I need FFmpeg?**
 The Windows installer includes it. On Linux, install it from your distro. Without FFmpeg you can still record, edit and export WAV.
+
+**Can StreamWave replace Audacity?**
+If you've used Audacity, you'll feel at home, with live effects, OBS sync and recordings that survive a crash.
+For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing, macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave also edits and exports one track at a time rather than mixing a full multitrack session.
+You can bring existing work across: **File → Import Audacity Project…** (or drag an `.aup3` onto the window) reads Audacity 3 projects. Tracks, names, clip positions and trims, the audio itself (16-bit, 24-bit and 32-bit float), track gain, pan, mute and solo, clip envelopes and labels (as markers) come across. Audacity effects and note/time tracks are skipped, and StreamWave tells you exactly what it left out. Your `.aup3` file is opened read-only and never changed; the audio is copied into WAV files next to your StreamWave project (or into your recordings folder under *Audacity imports* if the project isn't saved yet).
+*Audacity® is a trademark of its respective owners. StreamWave is an independent project and isn't affiliated with or endorsed by Audacity or Muse Group. The importer was written from scratch and contains no Audacity code.*
 
 **Is there a Mac version?**
 Not yet. Tauri supports macOS, so it's on the roadmap.

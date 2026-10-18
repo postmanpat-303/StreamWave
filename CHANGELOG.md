@@ -2,6 +2,19 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.7.0 (2026-10-18)
+### Added
+- **Import Audacity 3 projects (`.aup3`).** Use **File → Import Audacity Project…**, pick an `.aup3` in the Import dialog, or drag one onto the window.
+  - Brings across tracks and names, clip positions and trims (gaps are kept as silence), the audio in 16-bit, 24-bit and 32-bit float, stereo pairs, track gain (as a Gain effect), pan, mute and solo, clip envelopes, and labels (as markers).
+  - Pan and envelopes are applied to the extracted audio, using Audacity's own exponential envelope curve. The result was checked against Audacity 3.7.3's own exports and matches within 0.001.
+  - Effects, note/time tracks and pitch/speed changes are skipped, and a summary lists exactly what wasn't imported.
+  - **The `.aup3` is opened strictly read-only and never changed.** A project that is still open in Audacity is refused with a friendly message. If Audacity left unsaved autosave data, that newer version is used, as Audacity itself would.
+  - The audio is extracted to WAV files in `<your project> media/` next to a saved project, or under *Audacity imports* in your recordings folder.
+  - Written from scratch from the file format. No Audacity code is used.
+- **Drag and drop.** Drop audio or video files to add tracks, an `.aup3` to import it, or a `.twt` to open it.
+- `muted` / `solo` track tags (click to clear). Muted tracks are left out of **Send back to video**.
+- README FAQ: *Can StreamWave replace Audacity?*
+
 ## 0.6.1 (2026-10-18)
 ### Added
 - **▶ YouTube channel** button in About, next to Buy Me a Coffee and PayPal. It opens [Derek's channel](https://www.youtube.com/@whatgoesaround1551), with demos and promos for his apps. The URL is added to the app's link allowlist, which now has four exact URLs.

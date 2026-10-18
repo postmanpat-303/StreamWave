@@ -1,3 +1,4 @@
+import type { Aup3Result } from "./aup3Import";
 import { invoke } from "@tauri-apps/api/core";
 import type { Effect } from "./fx";
 type ClipArg = { src: string; start: number; end: number };
@@ -53,6 +54,7 @@ export const api = {
   /** Swap the live effect chain of the running playback (no restart, state carried over). */
   updateFx: (fx: FxArg[]) => invoke("update_fx", { fx }),
   pausePlayback: (pause: boolean) => invoke("pause_playback", { pause }),
+  importAup3: (path: string, mediaDir: string | null) => invoke<Aup3Result>("import_aup3", { path, mediaDir }),
   importAudio: (path: string) => invoke<Waveform>("import_audio", { path, buckets: 4000 }),
   obsConnect: (host: string, port: number, password: string) => invoke<ObsStatus>("obs_connect", { host, port, password }),
   obsDisconnect: () => invoke("obs_disconnect"),

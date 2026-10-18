@@ -5,7 +5,7 @@
 export interface Source { path: string; name: string; duration: number; sampleRate: number; channels: number; peaks: number[]; }
 export interface Clip { src: string; start: number; end: number; } // seconds inside the source file
 import type { FxSlot } from "./fx";
-export interface EditTrack { id: number; name: string; kind: string; clips: Clip[]; fx?: FxSlot[]; video?: string; }
+export interface EditTrack { id: number; name: string; kind: string; clips: Clip[]; fx?: FxSlot[]; video?: string; muted?: boolean; solo?: boolean; }
 export interface Marker { id: number; time: number; label: string; }
 export interface Project { tracks: EditTrack[]; markers?: Marker[]; }
 export interface Selection { trackId: number; a: number; b: number; } // a <= b, seconds on the track timeline

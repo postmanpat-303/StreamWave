@@ -6,6 +6,7 @@ mod project;
 mod export;
 mod studio;
 mod media;
+mod aup3;
 mod settings;
 mod waveform;
 
@@ -121,6 +122,21 @@ async fn obs_split(st: State<'_, AppState>, path: String) -> Result<Vec<media::S
     let out = st.rec_dir().join("OBS imports").join(stem);
     tauri::async_runtime::spawn_blocking(move || media::split_audio(&p, &out)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
+/// Read-only import of an Audacity 3 project: audio is extracted to WAV files in `media_dir`
+/// (default: <recordings>/Audacity imports/<name>), the .aup3 itself is never written to.
+#[tauri::command]
+async fn import_aup3(app: tauri::AppHandle, st: State<'_, AppState>, path: String, media_dir: Option<String>) -> Result<aup3::ImportResult, String> {
+    let p = std::path::PathBuf::from(&path);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Audacity project".into());
+    let base = match media_dir { Some(d) => std::path::PathBuf::from(d).join(format!("Audacity - {stem}")), None => st.rec_dir().join("Audacity imports").join(&stem) };
+    let out = aup3::unique_dir(&base);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut last = std::time::Instant::now();
+        let r = aup3::import(&p, &out, &mut |f| { if last.elapsed().as_millis() > 150 || f >= 1.0 { last = std::time::Instant::now(); let _ = app.emit("aup3-progress", f); } });
+        if r.is_err() { let _ = std::fs::remove_dir_all(&out); } // don't leave half an import behind
+        r
+    }).await.map_err(|e| e.to_string())?.map_err(|e| format!("{e:#}"))
+}
 #[tauri::command]
 async fn media_probe(path: String) -> Result<media::MediaInfo, String> {
     tauri::async_runtime::spawn_blocking(move || media::probe(std::path::Path::new(&path))).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
@@ -188,6 +204,7 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &it("saveas", "Save Project As...", Some("CmdOrCtrl+Shift+S"))?,
         &PredefinedMenuItem::separator(app)?,
         &it("import", "Import Audio...", Some("CmdOrCtrl+I"))?,
+        &it("importaup3", "Import Audacity Project...", None)?,
         &it("export", "Export...", Some("CmdOrCtrl+E"))?,
         &it("sendvideo", "Send Back to Video...", None)?,
         &PredefinedMenuItem::separator(app)?,
@@ -273,7 +290,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
+            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())

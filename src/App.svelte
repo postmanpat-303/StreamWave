@@ -9,6 +9,8 @@
   import About from "./lib/About.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
   import { shouldAutoCheck } from "./lib/updates";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { buildFromAup3, importedFiles, summary as aup3Summary, isAup3, isMedia, isProjectFile, type Aup3Result } from "./lib/aup3Import";
   import logoUrl from "./assets/logo.png";
   import WaveCanvas from "./lib/WaveCanvas.svelte";
   import ObsPanel from "./lib/ObsPanel.svelte";
@@ -67,10 +69,54 @@
       selection = { trackId: id, a: 0, b: 0 };
     } catch (e) { toast(String(e), "err"); }
   }
+  // ---- Audacity (.aup3) import: read-only, audio extracted to a media folder ----
+  let aupBusy = $state<{ name: string; frac: number } | null>(null);
+  let importReport = $state<{ title: string; text: string; dir: string } | null>(null);
+  async function importAudacity(path?: string) {
+    if (aupBusy) { toast("An Audacity import is already running", "warn"); return; }
+    const p = path ?? (await open({ filters: [{ name: "Audacity project", extensions: ["aup3"] }] }));
+    if (!p || Array.isArray(p)) return;
+    const base = p.split(/[\\/]/).pop()!.replace(/\.aup3$/i, "");
+    // saved project: keep the audio next to it; otherwise in the recordings folder
+    const mediaDir = projectPath ? projectPath.replace(/\.twt$/i, "") + " media" : null;
+    aupBusy = { name: base, frac: 0 };
+    const un = listen<number>("aup3-progress", (e) => { if (aupBusy) aupBusy = { ...aupBusy, frac: e.payload }; });
+    try {
+      const r = await api.importAup3(p, mediaDir);
+      const m = new Map(sources); const real = new Map<string, string>();
+      for (const f of importedFiles(r)) {
+        const w = await api.importAudio(f);
+        m.set(w.path, { path: w.path, name: w.name, duration: w.duration_secs, sampleRate: w.sample_rate, channels: w.channels, peaks: w.peaks });
+        real.set(f, w.path);
+      }
+      sources = m;
+      const { tracks, markers } = buildFromAup3(r, (f) => real.get(f) ?? f, () => nextId++);
+      if (!tracks.length && !markers.length) { toast(`"${base}" has no audio to import`, "warn"); return; }
+      commit("Import Audacity project", { ...hist.present, tracks: [...hist.present.tracks, ...tracks], markers: [...(hist.present.markers ?? []), ...markers].sort((a, b) => a.time - b.time) });
+      if (tracks.length) selection = { trackId: tracks[0].id, a: 0, b: 0 };
+      importReport = { title: `Imported "${r.name || base}"`, text: aup3Summary(r), dir: r.media_dir };
+    } catch (e) { toast(`Could not import Audacity project: ${e}`, "err"); }
+    finally { aupBusy = null; un.then((f) => f()); }
+  }
+  async function openDropped(paths: string[]) {
+    const twt = paths.find(isProjectFile);
+    if (twt) { await openProject(twt); return; }
+    let skipped = 0;
+    for (const p of paths) {
+      if (isAup3(p)) await importAudacity(p);
+      else if (isMedia(p)) await addTrack(p, "import");
+      else skipped++;
+    }
+    if (skipped) toast(`${skipped} file${skipped > 1 ? "s" : ""} skipped (not audio, video or an Audacity project)`, "warn");
+  }
+  let dropHover = $state(false);
+  function toggleTrackFlag(id: number, k: "muted" | "solo") {
+    commit(k === "muted" ? "Mute" : "Solo", { ...hist.present, tracks: hist.present.tracks.map((t) => (t.id === id ? { ...t, [k]: !t[k] } : t)) });
+  }
   function removeTrack(id: number) { commit("Remove track", { ...hist.present, tracks: hist.present.tracks.filter((t) => t.id !== id) }); }
 
   // ---- edit actions ----
-  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates";
+  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates" | "importaup3";
   async function run(action: Action) {
     const sel = selection;
     switch (action) {
@@ -108,6 +154,7 @@
       case "checkupdates": showAbout = false; updateMode = "manual"; break;
       case "record": await toggleRecord(); break;
       case "import": await importFile(); break;
+      case "importaup3": await importAudacity(); break;
       case "export": if (activeTrack()) showExport = true; else toast("Nothing to export", "warn"); break;
       case "save": await saveProject(false); break;
       case "saveas": await saveProject(true); break;
@@ -241,7 +288,7 @@
     const ext = video.split(".").pop()!.toLowerCase();
     const out = await save({ defaultPath: video.replace(/\.[^.]+$/, ` (StreamWave).${ext}`), filters: [{ name: "Video", extensions: [ext, "mkv", "mp4"] }] });
     if (!out) return;
-    const tracks = project.tracks.filter((x) => x.video === video).map((x) => ({ clips: x.clips, fx: activeChain(x.fx) }));
+    const tracks = project.tracks.filter((x) => x.video === video && !x.muted).map((x) => ({ clips: x.clips, fx: activeChain(x.fx) }));
     toast("Mixing and putting the audio back into the video (picture is copied, not re-encoded)...");
     try { await api.sendToVideo(video, tracks, (project.markers ?? []).map((m) => ({ time: m.time, label: m.label })), out); toast(`Video ready: ${out.split(/[\\/]/).pop()}`); }
     catch (e) { toast(`Send to video failed: ${e}`, "err"); }
@@ -378,8 +425,8 @@
     } catch (e) { toast(String(e), "err"); }
   }
   async function importFile() {
-    const sel = await open({ multiple: true, filters: [{ name: "Audio / Video", extensions: ["wav", "mp3", "flac", "ogg", "m4a", "aac", "mp4", "mkv", "aiff", "caf"] }] });
-    for (const p of (Array.isArray(sel) ? sel : sel ? [sel] : [])) await addTrack(p, "import");
+    const sel = await open({ multiple: true, filters: [{ name: "Audio / Video", extensions: ["wav", "mp3", "flac", "ogg", "m4a", "aac", "mp4", "mkv", "aiff", "caf"] }, { name: "Audacity project", extensions: ["aup3"] }] });
+    for (const p of (Array.isArray(sel) ? sel : sel ? [sel] : [])) { if (isAup3(p)) await importAudacity(p); else await addTrack(p, "import"); }
   }
   async function togglePlay(t: E.EditTrack) {
     if (playingId === t.id && level.playing) { await api.pausePlayback(!level.play_paused); return; }
@@ -436,11 +483,28 @@
     uns.push(listen<string>("menu", (e) => onMenu(e.payload as Action)));
     uns.push(listen<MicReport>("mic-check", (e) => onMic(e.payload)));
     uns.push(listen<string>("obs-scene", (e) => { if (level.recording) addMarker(`Scene: ${e.payload}`, level.rec_secs); }));
+    uns.push(getCurrentWebview().onDragDropEvent((e) => {
+      if (e.payload.type === "enter" || e.payload.type === "over") dropHover = true;
+      else if (e.payload.type === "leave") dropHover = false;
+      else if (e.payload.type === "drop") { dropHover = false; openDropped(e.payload.paths); }
+    }).catch(() => () => {}));
     window.addEventListener("keydown", onKey);
     return () => { uns.forEach((u) => u.then((f) => f())); window.removeEventListener("keydown", onKey); clearInterval(autosave); window.removeEventListener("beforeunload", beforeUnload); };
   });
 </script>
 
+{#if dropHover}<div class="drophint">Drop audio, video, an Audacity project (.aup3) or a StreamWave project (.twt)</div>{/if}
+{#if aupBusy}<div class="aupbusy panel">Importing Audacity project "{aupBusy.name}"… {Math.round(aupBusy.frac * 100)}%<div class="bar"><div style="width:{aupBusy.frac * 100}%"></div></div><div class="small">Your .aup3 file is only read, never changed.</div></div>{/if}
+{#if importReport}
+  <div class="modal-back" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) importReport = null; }}>
+    <div class="modal panel" role="dialog" aria-modal="true" aria-label="Audacity import summary">
+      <h3>{importReport.title}</h3>
+      {#each importReport.text.split("\n") as line, i}<p class={i ? "small" : ""}>{line}</p>{/each}
+      <p class="small">Audio was copied to: {importReport.dir}<br />Your .aup3 file was not changed.</p>
+      <div class="row2"><button onclick={() => (importReport = null)}>OK</button></div>
+    </div>
+  </div>
+{/if}
 {#if showAbout}<About onclose={() => (showAbout = false)} onupdates={() => { showAbout = false; updateMode = "manual"; }} />{/if}
 {#if updateMode}
   <UpdateDialog quiet={updateMode === "quiet"} skipped={settings.update_skip_version ?? null} {dirty}
@@ -503,6 +567,8 @@
               {#if playingId === t.id && level.playing}<button class="play" title="Stop" onclick={() => run("stop")}>■</button>{/if}
               <div class="tname" title={t.clips.map((c) => c.src).join("\n")}>{t.name}</div>
               <span class="tag {t.kind}">{t.kind}</span>
+              {#if t.muted}<button class="tag flag" title="Muted in Audacity (left out of Send Back to Video). Click to unmute." onclick={() => toggleTrackFlag(t.id, "muted")}>muted</button>{/if}
+              {#if t.solo}<button class="tag flag" title="Solo in Audacity. Click to clear." onclick={() => toggleTrackFlag(t.id, "solo")}>solo</button>{/if}
               <span class="small">{fmtTime(len)}{t.clips.length > 1 ? ` · ${t.clips.length} clips` : ""}{t.fx?.some((f) => !f.bypass) ? ` · ${t.fx.filter((f) => !f.bypass).length} fx` : ""}
                 {#if selection?.trackId === t.id && selection.b - selection.a > 0.0005} · sel {fmtTime(selection.a)}–{fmtTime(selection.b)}{/if}</span>
               <button class="x" onclick={() => removeTrack(t.id)} title="Remove from project (file is kept)">✕</button>
@@ -602,6 +668,13 @@
   .play { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
   .tname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
   .tag { font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 10px; background: #19d3b022; color: var(--accent); }
+  .tag.audacity { background: #3d8bff22; color: #7fb2ff; }
+  button.tag.flag { border: 1px solid #ffb02066; background: #ffb02014; color: var(--warn); cursor: pointer; padding: 0 6px; font-size: 11px; }
+  .drophint { position: fixed; inset: 12px; border: 3px dashed #19d3b0; border-radius: 14px; background: #0b0f14cc; display: grid; place-items: center; z-index: 60; pointer-events: none; font-size: 18px; }
+  .aupbusy { position: fixed; right: 16px; bottom: 16px; z-index: 55; width: 320px; }
+  .aupbusy .bar { height: 6px; background: #ffffff1a; border-radius: 3px; margin: 8px 0 4px; overflow: hidden; } .aupbusy .bar div { height: 100%; background: #19d3b0; }
+  .modal-back { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; z-index: 70; }
+  .modal { max-width: 560px; max-height: 80vh; overflow: auto; } .modal p { margin: 6px 0; white-space: pre-wrap; }
   .tag.obs { background: #8b7bff22; color: #a99cff; } .tag.recovered { background: #ffb02022; color: var(--warn); }
   .x { margin-left: auto; background: transparent; border: none; color: var(--muted); }
   .seg { display: flex; gap: 4px; } .seg button { flex: 1; padding: 6px 4px; font-size: 12px; } .seg .sel { background: var(--accent); color: #002; border-color: var(--accent); }
