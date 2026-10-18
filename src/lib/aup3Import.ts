@@ -22,7 +22,8 @@ export const importedFiles = (r: Aup3Result) => [...new Set(r.tracks.flatMap((t)
 export function buildFromAup3(r: Aup3Result, resolve: (p: string) => string, newId: () => number): { tracks: EditTrack[]; markers: Marker[] } {
   const tracks = r.tracks.filter((t) => t.clips.length).map((t): EditTrack => ({
     id: newId(), name: t.name || r.name, kind: "audacity",
-    clips: t.clips.map((c) => ({ src: resolve(c.path), start: c.start, end: c.end })),
+    // every Audacity clip (and gap) starts a clip of its own, kept apart like a Split
+    clips: t.clips.map((c, i) => ({ src: resolve(c.path), start: c.start, end: c.end, ...(i ? { split: true } : {}) })),
     ...(t.gain_db != null && Math.abs(t.gain_db) > 0.01 ? { fx: [slot({ type: "Gain", db: Math.round(t.gain_db * 10) / 10 })] } : {}),
     ...(t.muted ? { muted: true } : {}), ...(t.solo ? { solo: true } : {}),
   }));

@@ -3,16 +3,25 @@
 // and History keeps those values so undo/redo is cheap and exact.
 
 export interface Source { path: string; name: string; duration: number; sampleRate: number; channels: number; peaks: number[]; }
-export interface Clip { src: string; start: number; end: number; } // seconds inside the source file
+/** seconds inside the source file; `split` = a deliberate clip boundary before this clip (Split/Join) */
+export interface Clip { src: string; start: number; end: number; split?: boolean; }
+/** Text label on a label track (t1 > t0 for a range label). */
+export interface Label { id: number; t0: number; t1: number; text: string; }
+export type SpecScale = "log" | "linear";
+export type SpecColors = "classic" | "inferno" | "grey";
 import type { FxSlot } from "./fx";
-export interface EditTrack { id: number; name: string; kind: string; clips: Clip[]; fx?: FxSlot[]; video?: string; muted?: boolean; solo?: boolean; }
+export interface EditTrack { id: number; name: string; kind: string; clips: Clip[]; fx?: FxSlot[]; video?: string; muted?: boolean; solo?: boolean;
+  /** kind "labels": a label track (no audio) */ labels?: Label[];
+  view?: "wave" | "spectrogram"; specScale?: SpecScale; specColors?: SpecColors; }
 export interface Marker { id: number; time: number; label: string; }
 export interface Project { tracks: EditTrack[]; markers?: Marker[]; }
-export interface Selection { trackId: number; a: number; b: number; } // a <= b, seconds on the track timeline
+/** a <= b, seconds on the timeline. `tracks` = every selected track (multi-track selection), incl. trackId. */
+export interface Selection { trackId: number; a: number; b: number; tracks?: number[]; }
 
 const EPS = 1e-9;
 export const clipLen = (c: Clip) => c.end - c.start;
-export const trackLen = (t: EditTrack) => t.clips.reduce((s, c) => s + clipLen(c), 0);
+export const trackLen = (t: EditTrack) => Math.max(t.clips.reduce((s, c) => s + clipLen(c), 0), ...(t.labels ?? []).map((l) => l.t1));
+export const isLabelTrack = (t: EditTrack) => t.kind === "labels";
 export const norm = (a: number, b: number): [number, number] => (a <= b ? [a, b] : [b, a]);
 
 /** Split the clip list so that there is a clip boundary at time t. */
@@ -22,7 +31,7 @@ function splitAt(clips: Clip[], t: number): Clip[] {
     const len = clipLen(c);
     if (t > pos + EPS && t < pos + len - EPS) {
       const cut = c.start + (t - pos);
-      out.push({ ...c, end: cut }, { ...c, start: cut });
+      out.push({ ...c, end: cut }, { ...c, start: cut, split: undefined });
     } else out.push(c);
     pos += len;
   }
@@ -59,14 +68,15 @@ export function insertAt(t: EditTrack, at: number, clips: Clip[]): EditTrack {
   return { ...t, clips: merge([...before, ...clips.map((c) => ({ ...c })), ...after]) };
 }
 
+const tidy = (c: Clip, first: boolean): Clip => { const { split, ...rest } = c; return split && !first ? { ...rest, split } : rest; };
 /** Re-join adjacent clips that are contiguous in the same source (keeps the model tidy after undoable splits). */
 function merge(clips: Clip[]): Clip[] {
   const out: Clip[] = [];
   for (const c of clips) {
     if (clipLen(c) < EPS) continue;
     const p = out[out.length - 1];
-    if (p && p.src === c.src && Math.abs(p.end - c.start) < EPS) out[out.length - 1] = { ...p, end: c.end };
-    else out.push({ ...c });
+    if (p && !c.split && p.src === c.src && Math.abs(p.end - c.start) < EPS) out[out.length - 1] = { ...p, end: c.end };
+    else out.push(tidy(c, out.length === 0));
   }
   return out;
 }
@@ -102,6 +112,101 @@ export function removeMarker(p: Project, id: number): Project { return { ...p, m
 export function nextMarker(p: Project, t: number, dir: 1 | -1): Marker | undefined {
   const ms = p.markers ?? [];
   return dir > 0 ? ms.find((m) => m.time > t + 1e-3) : [...ms].reverse().find((m) => m.time < t - 1e-3);
+}
+
+// ---- multi-track selection ---------------------------------------------------
+/** Ids of every selected track, in project order. */
+export function selectedIds(p: Project, sel: Selection | null): number[] {
+  if (!sel) return [];
+  const set = new Set([sel.trackId, ...(sel.tracks ?? [])]);
+  return p.tracks.filter((t) => set.has(t.id)).map((t) => t.id);
+}
+const mapSel = (p: Project, sel: Selection, f: (t: EditTrack) => EditTrack): Project => {
+  const ids = new Set(selectedIds(p, sel));
+  return { ...p, tracks: p.tracks.map((t) => (ids.has(t.id) ? f(t) : t)) };
+};
+/** Labels: remove those inside [a,b], cut those overlapping, shift later ones left (keeps them in sync with the audio). */
+export function removeLabelRange(ls: Label[], a: number, b: number): Label[] {
+  [a, b] = norm(a, b); const d = b - a; if (d < EPS) return ls;
+  const at = (t: number) => (t <= a ? t : t >= b ? t - d : a);
+  return ls.filter((l) => (l.t1 - l.t0 < EPS ? !(l.t0 > a + EPS && l.t0 < b - EPS) : !(l.t0 >= a - EPS && l.t1 <= b + EPS)))
+    .map((l) => ({ ...l, t0: at(l.t0), t1: at(l.t1) }));
+}
+/** Make room for d seconds inserted at `at`: later labels move right, labels spanning `at` grow. */
+export function shiftLabels(ls: Label[], at: number, d: number): Label[] {
+  return ls.map((l) => {
+    const after = l.t0 >= at - EPS;
+    return { ...l, t0: after ? l.t0 + d : l.t0, t1: after || l.t1 > at + EPS ? l.t1 + d : l.t1 };
+  });
+}
+const removeAny = (t: EditTrack, a: number, b: number): EditTrack =>
+  isLabelTrack(t) ? { ...t, labels: removeLabelRange(t.labels ?? [], a, b) } : removeRange(t, a, b);
+
+/** Cut on every selected track. The clipboard has one entry per selected audio track. */
+export function cutMany(p: Project, sel: Selection): { project: Project; clipboard: Clip[][] } {
+  return { project: mapSel(p, sel, (t) => removeAny(t, sel.a, sel.b)), clipboard: copyMany(p, sel) };
+}
+export function copyMany(p: Project, sel: Selection): Clip[][] {
+  const ids = new Set(selectedIds(p, sel));
+  return p.tracks.filter((t) => ids.has(t.id) && !isLabelTrack(t)).map((t) => extract(t, sel.a, sel.b));
+}
+export function delMany(p: Project, sel: Selection): Project { return mapSel(p, sel, (t) => removeAny(t, sel.a, sel.b)); }
+/** Paste clipboard entry i into the i-th selected audio track (one entry goes into every selected track). Label tracks make room. */
+export function pasteMany(p: Project, sel: Selection, clip: Clip[][]): Project {
+  if (!clip.length) return p;
+  const at = Math.min(sel.a, sel.b); let i = 0;
+  const len = Math.max(...clip.map((cs) => cs.reduce((s, c) => s + clipLen(c), 0)));
+  return mapSel(p, sel, (t) => {
+    if (isLabelTrack(t)) return { ...t, labels: shiftLabels(removeLabelRange(t.labels ?? [], sel.a, sel.b), at, len) };
+    const cs = clip.length === 1 ? clip[0] : clip[i++]; if (!cs) return t;
+    return insertAt(removeRange(t, sel.a, sel.b), at, cs);
+  });
+}
+
+// ---- split / join clips ---------------------------------------------------------
+/** Put a deliberate clip boundary at time t (no-op at the very start or end). */
+export function splitTrackAt(t: EditTrack, at: number): EditTrack {
+  if (isLabelTrack(t) || at <= EPS || at >= trackLen(t) - EPS) return t;
+  const s = splitAt(t.clips, at); let pos = 0;
+  return { ...t, clips: merge(s.map((c) => { const r = Math.abs(pos - at) < 1e-6 ? { ...c, split: true } : c; pos += clipLen(c); return r; })) };
+}
+/** Split every selected track at the cursor, or at both edges of a range. */
+export function splitClips(p: Project, sel: Selection): Project {
+  const ts = sel.b - sel.a > EPS ? [sel.a, sel.b] : [sel.a];
+  return mapSel(p, sel, (t) => ts.reduce(splitTrackAt, t));
+}
+/** Join: remove the clip boundaries strictly inside [a,b]; pieces of the same source merge back into one clip. */
+export function joinTrack(t: EditTrack, a: number, b: number): EditTrack {
+  if (isLabelTrack(t)) return t;
+  let pos = 0;
+  return { ...t, clips: merge(t.clips.map((c) => { const r = pos > a + EPS && pos < b - EPS && c.split ? { ...c, split: undefined } : c; pos += clipLen(c); return r; })) };
+}
+export function joinClips(p: Project, sel: Selection): Project { return mapSel(p, sel, (t) => joinTrack(t, sel.a, sel.b)); }
+/** Clip start positions on the track timeline (excluding 0), with whether each is a deliberate split. */
+export function clipBounds(t: EditTrack): { t: number; split: boolean }[] {
+  const out: { t: number; split: boolean }[] = []; let pos = 0;
+  t.clips.forEach((c, i) => { if (i) out.push({ t: pos, split: !!c.split }); pos += clipLen(c); });
+  return out;
+}
+
+// ---- label tracks -------------------------------------------------------------
+export function setLabels(p: Project, trackId: number, f: (ls: Label[]) => Label[]): Project {
+  return mapTrack(p, trackId, (t) => ({ ...t, labels: f(t.labels ?? []).slice().sort((x, y) => x.t0 - y.t0 || x.id - y.id) }));
+}
+const fmt6 = (x: number) => x.toFixed(6);
+/** Audacity-compatible label text: "start<TAB>end<TAB>text" per line. */
+export function labelsToText(ls: Label[]): string {
+  return ls.map((l) => `${fmt6(l.t0)}\t${fmt6(l.t1)}\t${l.text.replace(/[\r\n\t]+/g, " ")}`).join("\n") + (ls.length ? "\n" : "");
+}
+export function textToLabels(s: string, newId: () => number): Label[] {
+  return s.split(/\r?\n/).map((line) => line.split("\t")).filter((f) => f.length >= 2 && !isNaN(+f[0]))
+    .map((f) => { const t0 = +f[0], t1 = isNaN(+f[1]) ? t0 : +f[1]; return { id: newId(), t0, t1: Math.max(t0, t1), text: f.slice(2).join(" ") }; });
+}
+/** Copy labels to project markers (for chapters in exports / Send back to video). Skips ones already there. */
+export function labelsToMarkers(p: Project, ls: Label[], newId: () => number): Project {
+  const have = new Set((p.markers ?? []).map((m) => `${m.time.toFixed(3)}|${m.label}`));
+  const add = ls.filter((l) => !have.has(`${l.t0.toFixed(3)}|${l.text || "Label"}`)).map((l) => ({ id: newId(), time: l.t0, label: l.text || "Label" }));
+  return { ...p, markers: [...(p.markers ?? []), ...add].sort((a, b) => a.time - b.time) };
 }
 
 // ---- history --------------------------------------------------------------

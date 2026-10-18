@@ -37,12 +37,19 @@ pub fn render(cache: &DecodeCache, clips: &[ClipSpec]) -> anyhow::Result<Decoded
     let first = cache.get(&clips[0].src)?;
     let (rate, ch) = (first.sample_rate, first.channels);
     let mut out = Vec::new();
+    // clip lengths are taken from the running timeline position, so splitting a clip anywhere
+    // renders exactly the same samples as the unsplit clip (no dropped/doubled sample at the cut)
+    let mut tl = 0.0f64;
     for c in clips {
         let d = cache.get(&c.src)?;
         let frames = d.samples.len() / d.channels;
         let ratio = d.sample_rate as f64 / rate as f64;
-        let n = ((c.end - c.start).max(0.0) * rate as f64).round() as usize;
-        let s0 = c.start * d.sample_rate as f64;
+        let len = (c.end - c.start).max(0.0);
+        let g0 = (tl * rate as f64).round();
+        let n = ((tl + len) * rate as f64).round() as usize - g0 as usize;
+        // output frame g reads source position start + (g - tl*rate) * ratio, same as without the cut
+        let s0 = c.start * d.sample_rate as f64 + (g0 - tl * rate as f64) * ratio;
+        tl += len;
         for f in 0..n {
             let pos = s0 + f as f64 * ratio;
             let i = pos as usize;
@@ -111,5 +118,25 @@ mod tests {
         let out = dir.join("out.wav"); write_wav(&d, &out).unwrap();
         assert_eq!(hound::WavReader::open(&out).unwrap().len(), 300);
         assert_eq!(std::fs::read(&src).unwrap(), before);
+    }
+    #[test]
+    fn a_split_clip_renders_exactly_like_the_whole_clip() {
+        let dir = std::env::temp_dir().join("tw_render_split"); let _ = std::fs::remove_dir_all(&dir); std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("s.wav");
+        let spec = hound::WavSpec { channels: 2, sample_rate: 8000, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+        let mut w = hound::WavWriter::create(&src, spec).unwrap();
+        for i in 0..16000 { let x = (i as f32 * 0.37).sin(); w.write_sample(x).unwrap(); w.write_sample(-x).unwrap(); }
+        w.finalize().unwrap();
+        let p = src.to_string_lossy().to_string(); let cache = DecodeCache::default();
+        let c = |a: f64, b: f64| ClipSpec { src: p.clone(), start: a, end: b };
+        let whole = render(&cache, &[c(0.1, 1.9)]).unwrap();
+        for cuts in [vec![0.33371], vec![0.2, 0.70001, 1.234567], vec![1.0 / 3.0, 2.0 / 3.0]] {
+            let mut pts = vec![0.1]; pts.extend(cuts.iter().copied()); pts.push(1.9);
+            let parts: Vec<ClipSpec> = pts.windows(2).map(|w| c(w[0], w[1])).collect();
+            let split = render(&cache, &parts).unwrap();
+            assert_eq!(split.samples.len(), whole.samples.len(), "{cuts:?}");
+            let diff = split.samples.iter().zip(&whole.samples).fold(0f32, |m, (a, b)| m.max((a - b).abs()));
+            assert!(diff < 1e-5, "{cuts:?}: {diff}");
+        }
     }
 }

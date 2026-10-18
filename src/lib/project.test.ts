@@ -33,4 +33,14 @@ describe("project file", () => {
     const f = deserialize('{"format":"truewave-project","version":1,"tracks":[{"id":9,"name":"x","kind":"mic","clips":[]}]}');
     expect(f.nextId).toBe(10); expect(f.tracks[0].fx).toEqual([]);
   });
+  it("keeps label tracks, splits and spectrogram settings", () => {
+    const p: Project = { tracks: [
+      { id: 3, name: "Mic", kind: "mic", view: "spectrogram", specScale: "linear", specColors: "grey", clips: [{ src: src.path, start: 0, end: 4 }, { src: src.path, start: 4, end: 10, split: true }] },
+      { id: 4, name: "Labels", kind: "labels", clips: [], labels: [{ id: 7, t0: 1, t1: 2.5, text: "Verse" }] },
+    ] };
+    const f = deserialize(serialize(p, new Map([[src.path, src]]), 9));
+    expect(f.tracks).toEqual(p.tracks.map((t) => ({ ...t, fx: [] })));
+    expect(f.sources.map((s) => s.path)).toEqual([src.path]);
+    expect(f.nextId).toBe(9);
+  });
 });

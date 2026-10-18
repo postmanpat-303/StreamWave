@@ -18,14 +18,22 @@ Tracks are lists of **clips** that point into the source files using start/end o
 | Action | Shortcut |
 |---|---|
 | Select | click-drag on a waveform; **Shift-click** extends |
+| Select several tracks | drag up or down across tracks, or **Ctrl-click** (⌘-click on Mac) a track to add or remove it. Cut, copy, paste, delete, split and join then apply to every selected track, and label tracks move with the audio. |
+| Select a whole clip | double-click it |
+| Split clip | **Ctrl+K** (Edit → Split Clip): splits at the cursor, or at both ends of a selection. Ctrl+I stays Import. |
+| Join clips | **Ctrl+J** (Edit → Join Clips): removes the splits inside the selection |
+| Add label | **Ctrl+B** (Edit → Add Label at Selection): type the text and press Enter. A point label is added at the cursor, a range label for a selection. |
+| Waveform / spectrogram | the 〰 / ▤ button on each track, or **Ctrl+Shift+G** (View menu) for the selected tracks. Log or linear frequency scale; Classic, Inferno or Greyscale colours. |
 | Cut / Copy / Paste | Ctrl+X / Ctrl+C / Ctrl+V (paste replaces the selection or inserts at the cursor) |
 | Delete selection | Del or Backspace |
-| Select all (current track) | Ctrl+A |
+| Select all (every track) | Ctrl+A |
 | Undo / Redo | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z (full command history, 500 steps) |
 | Play / Pause | Space (plays the selection if there is one, otherwise from the cursor) |
 | Record | R |
 | Import / Export WAV | Ctrl+I / Ctrl+E |
-These shortcuts are also in the **Edit / File / Transport menus**. When a text box is focused, the standard clipboard and undo shortcuts act on the text, never on the audio.
+**Label tracks:** use **Edit → New Label Track**, or press Ctrl+B and one is created for you. Click a label's text to edit it, and click ▾ to select its range. Delete a label with ✕, or with Backspace in an empty label. **File → Export Labels…** saves Audacity-compatible text (`start⇥end⇥text`). **File → Import Labels…** reads it back. **→ Markers** copies labels to project markers, which become chapters in exports and Send Back to Video.
+**Clips:** bright lines with a ▾ show splits. Faint lines show where one source file ends and the next begins. All tracks share one timeline, so a shorter track is drawn shorter.
+These shortcuts are also in the **Edit / File / View / Transport menus**. When a text box is focused, the standard clipboard and undo shortcuts act on the text, never on the audio.
 Playback and export render the edited clip list to a new 32-bit float WAV.
 Tests: `npm test` (edit model, effects chain, project files) and `cargo test` in `src-tauri` (DSP, WAV recovery, rendering, project I/O, pre-roll, mic check, encoders; the FFmpeg tests skip if FFmpeg isn't installed).
 

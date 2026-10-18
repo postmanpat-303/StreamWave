@@ -13,6 +13,8 @@
   import { buildFromAup3, importedFiles, summary as aup3Summary, isAup3, isMedia, isProjectFile, type Aup3Result } from "./lib/aup3Import";
   import logoUrl from "./assets/logo.png";
   import WaveCanvas from "./lib/WaveCanvas.svelte";
+  import LabelLane from "./lib/LabelLane.svelte";
+  import { parseSpec, type Spec } from "./lib/spectrogram";
   import ObsPanel from "./lib/ObsPanel.svelte";
   import FxPanel from "./lib/FxPanel.svelte";
   import ExportPanel from "./lib/ExportPanel.svelte";
@@ -31,7 +33,7 @@
   let project = $state.raw<E.Project>(hist.present);
   let sources = $state.raw(new Map<string, E.Source>());
   let selection = $state<E.Selection | null>(null);
-  let clipboard: E.Clip[] = [];
+  let clipboard: E.Clip[][] = [];
   let playingId = $state<number | null>(null);
   let canUndo = $state(false), canRedo = $state(false);
   let toasts = $state<{ id: number; text: string; kind: string }[]>([]);
@@ -54,7 +56,12 @@
     setTimeout(() => (toasts = toasts.filter((t) => t.id !== id)), 5000);
   }
   function sync() { project = hist.present; canUndo = hist.canUndo; canRedo = hist.canRedo; markDirty();
-    if (selection && !project.tracks.some((t) => t.id === selection!.trackId)) selection = null; }
+    if (selection) {
+      const ids = new Set(project.tracks.map((t) => t.id));
+      const rest = (selection.tracks ?? []).filter((id) => ids.has(id));
+      if (!ids.has(selection.trackId)) selection = rest.length ? { ...selection, trackId: rest[0], tracks: rest } : null;
+      else if (rest.length !== (selection.tracks ?? []).length) selection = { ...selection, tracks: rest };
+    } }
   function commit(label: string, next: E.Project) { hist.apply(label, next); sync(); }
   const activeTrack = () => project.tracks.find((t) => t.id === selection?.trackId) ?? project.tracks[0];
   const hasRange = () => !!selection && selection.b - selection.a > 0.0005;
@@ -113,10 +120,118 @@
   function toggleTrackFlag(id: number, k: "muted" | "solo") {
     commit(k === "muted" ? "Mute" : "Solo", { ...hist.present, tracks: hist.present.tracks.map((t) => (t.id === id ? { ...t, [k]: !t[k] } : t)) });
   }
+  // ---- multi-track selection: drag across tracks, Ctrl-click adds/removes a track ----
+  const isSel = (id: number) => !!selection && (selection.trackId === id || !!selection.tracks?.includes(id));
+  const selIds = () => E.selectedIds(project, selection);
+  let dragAnchor: number | null = null;
+  function onSel(t: E.EditTrack, a: number, b: number, e: PointerEvent, phase: "down" | "move") {
+    if (phase === "down") {
+      if ((e.ctrlKey || e.metaKey) && selection) {
+        const cur = selIds(); const has = cur.includes(t.id);
+        const next = has ? cur.filter((x) => x !== t.id) : [...cur, t.id];
+        if (next.length) { selection = { ...selection, trackId: has ? (selection.trackId === t.id ? next[0] : selection.trackId) : t.id, tracks: next }; dragAnchor = null; return; }
+      }
+      dragAnchor = t.id;
+      const keep = e.shiftKey && selection ? selection.tracks : undefined;
+      selection = { trackId: t.id, a, b, ...(keep ? { tracks: keep } : {}) };
+      return;
+    }
+    if (dragAnchor === null) return;
+    // which track row is the pointer over now?
+    let over = dragAnchor;
+    for (const el of document.querySelectorAll<HTMLElement>("[data-tid]")) {
+      const r = el.getBoundingClientRect(); if (e.clientY >= r.top && e.clientY <= r.bottom) { over = +el.dataset.tid!; break; }
+    }
+    const order = project.tracks.map((x) => x.id), i = order.indexOf(dragAnchor), j = order.indexOf(over);
+    const ids = i < 0 || j < 0 ? [dragAnchor] : order.slice(Math.min(i, j), Math.max(i, j) + 1);
+    selection = { trackId: dragAnchor, a, b, ...(ids.length > 1 ? { tracks: ids } : {}) };
+  }
+  /** Double-click: select the clip under the pointer. */
+  function pickClip(t: E.EditTrack, at: number) {
+    let pos = 0;
+    for (const c of t.clips) { const l = E.clipLen(c); if (at >= pos && at <= pos + l) { selection = { trackId: t.id, a: pos, b: pos + l }; return; } pos += l; }
+  }
+  const timelineLen = $derived(Math.max(0.001, ...project.tracks.map((t) => E.trackLen(t)), ...(project.markers ?? []).map((m) => m.time)));
+  function syncScroll(e: Event) {
+    const x = (e.currentTarget as HTMLElement).scrollLeft;
+    for (const el of document.querySelectorAll<HTMLElement>(".tracks .scroll")) if (el !== e.currentTarget && el.scrollLeft !== x) el.scrollLeft = x;
+  }
+
+  // ---- label tracks ----
+  let focusLabel = $state<number | null>(null);
+  function newLabelTrack(): number {
+    const id = nextId++; const n = project.tracks.filter(E.isLabelTrack).length;
+    commit("New label track", { ...hist.present, tracks: [...hist.present.tracks, { id, name: n ? `Labels ${n + 1}` : "Labels", kind: "labels", clips: [], labels: [] }] });
+    return id;
+  }
+  function addLabel() {
+    const sel = selection ?? { trackId: -1, a: 0, b: 0 };
+    const at = level.playing ? playOffset + level.play_secs : sel.a, end = level.playing ? at : sel.b;
+    const target = project.tracks.find((t) => isSel(t.id) && E.isLabelTrack(t)) ?? project.tracks.find(E.isLabelTrack);
+    const tid = target?.id ?? newLabelTrack();
+    const l: E.Label = { id: nextId++, t0: at, t1: Math.max(at, end), text: "" };
+    commit("Add label", E.setLabels(hist.present, tid, (ls) => [...ls, l]));
+    focusLabel = l.id;
+  }
+  const allLabels = () => project.tracks.filter(E.isLabelTrack).flatMap((t) => t.labels ?? []).sort((a, b) => a.t0 - b.t0);
+  async function exportLabels() {
+    const t = project.tracks.find((x) => isSel(x.id) && E.isLabelTrack(x)) ?? project.tracks.find(E.isLabelTrack);
+    const ls = t?.labels ?? [];
+    if (!ls.length) { toast("No labels to export. Press Ctrl+B to add one.", "warn"); return; }
+    const p = await save({ defaultPath: `${projName} labels.txt`, filters: [{ name: "Label text (Audacity format)", extensions: ["txt"] }] });
+    if (!p) return;
+    const path = /\.txt$/i.test(p) ? p : p + ".txt";
+    try { await api.saveTextFile(path, E.labelsToText(ls)); toast(`Exported ${ls.length} label${ls.length === 1 ? "" : "s"}`); } catch (e) { toast(`Export failed: ${e}`, "err"); }
+  }
+  async function importLabels() {
+    const p = await open({ filters: [{ name: "Label text", extensions: ["txt"] }] });
+    if (!p || Array.isArray(p)) return;
+    try {
+      const ls = E.textToLabels(await api.readTextFile(p), () => nextId++);
+      if (!ls.length) { toast("No labels found in that file", "warn"); return; }
+      const id = nextId++, name = p.split(/[\\/]/).pop()!.replace(/\.txt$/i, "");
+      commit("Import labels", { ...hist.present, tracks: [...hist.present.tracks, { id, name, kind: "labels", clips: [], labels: ls }] });
+      toast(`Imported ${ls.length} label${ls.length === 1 ? "" : "s"}`);
+    } catch (e) { toast(`Could not import labels: ${e}`, "err"); }
+  }
+  function labelsToMarkers() {
+    const ls = allLabels(); if (!ls.length) { toast("No labels yet. Press Ctrl+B to add one.", "warn"); return; }
+    const before = (hist.present.markers ?? []).length;
+    commit("Labels to markers", E.labelsToMarkers(hist.present, ls, () => nextId++));
+    toast(`Added ${(hist.present.markers ?? []).length - before} marker(s) from labels`);
+  }
+
+  // ---- spectrogram view (per track) ----
+  let zoom = $state(1);
+  let specs = $state.raw(new Map<number, { key: string; spec: Spec | null }>());
+  const specCols = $derived(Math.min(8000, Math.round(1200 * zoom)));
+  function setView(id: number, patch: Partial<E.EditTrack>, label = "Track view") {
+    commit(label, { ...hist.present, tracks: hist.present.tracks.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+  }
+  function toggleView() {
+    const ids = selIds().length ? selIds() : project.tracks[0] ? [project.tracks[0].id] : [];
+    const ts = project.tracks.filter((t) => ids.includes(t.id) && !E.isLabelTrack(t)); if (!ts.length) return;
+    const to = ts[0].view === "spectrogram" ? "wave" : "spectrogram";
+    commit(to === "spectrogram" ? "Spectrogram view" : "Waveform view", { ...hist.present, tracks: hist.present.tracks.map((t) => (ts.includes(t) ? { ...t, view: to } : t)) });
+  }
+  $effect(() => {
+    for (const t of project.tracks) {
+      if (t.view !== "spectrogram" || !t.clips.length) continue;
+      const cols = Math.max(50, Math.round(specCols * E.trackLen(t) / timelineLen));
+      const key = JSON.stringify([t.clips, cols]);
+      if (specs.get(t.id)?.key === key) continue;
+      specs = new Map(specs).set(t.id, { key, spec: specs.get(t.id)?.spec ?? null });
+      api.spectrogram(t.clips, cols).then((buf) => {
+        if (specs.get(t.id)?.key !== key) return;
+        specs = new Map(specs).set(t.id, { key, spec: parseSpec(buf) });
+      }).catch((e) => toast(`Spectrogram failed: ${e}`, "err"));
+    }
+  });
+
   function removeTrack(id: number) { commit("Remove track", { ...hist.present, tracks: hist.present.tracks.filter((t) => t.id !== id) }); }
 
   // ---- edit actions ----
-  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates" | "importaup3";
+  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates" | "importaup3" | "split" | "join" | "addlabel" | "labeltrack" | "labelsmarkers" | "importlabels" | "exportlabels" | "toggleview";
   async function run(action: Action) {
     const sel = selection;
     switch (action) {
@@ -124,24 +239,43 @@
       case "redo": { const l = hist.redoLabel; if (hist.redo()) { sync(); toast(`Redo ${l}`); restartIfPlaying(); } break; }
       case "zoomin": setZoom(zoom * 1.5); break;
       case "zoomout": setZoom(zoom / 1.5); break;
-      case "cut": if (sel && hasRange()) { const r = E.cut(hist.present, sel); clipboard = r.clipboard; commit("Cut", r.project); selection = { ...sel, b: sel.a }; } break;
-      case "copy": if (sel && hasRange()) { clipboard = E.copy(hist.present, sel); toast("Copied selection"); } break;
-      case "delete": if (sel && hasRange()) { commit("Delete", E.del(hist.present, sel)); selection = { ...sel, b: sel.a }; } break;
+      case "cut": if (sel && hasRange()) { const r = E.cutMany(hist.present, sel); clipboard = r.clipboard; commit(selIds().length > 1 ? `Cut (${selIds().length} tracks)` : "Cut", r.project); selection = { ...sel, b: sel.a }; } break;
+      case "copy": if (sel && hasRange()) { clipboard = E.copyMany(hist.present, sel); toast(clipboard.length > 1 ? `Copied ${clipboard.length} tracks` : "Copied selection"); } break;
+      case "delete": if (sel && hasRange()) { commit(selIds().length > 1 ? `Delete (${selIds().length} tracks)` : "Delete", E.delMany(hist.present, sel)); selection = { ...sel, b: sel.a }; } break;
       case "paste": {
         if (!clipboard.length) break;
-        const len = clipboard.reduce((s, c) => s + E.clipLen(c), 0);
-        if (!sel) { // no target: paste as a new track
-          const id = nextId++;
-          commit("Paste", { ...hist.present, tracks: [...hist.present.tracks, { id, name: "Pasted audio", kind: "import", clips: clipboard.map((c) => ({ ...c })) }] });
-          selection = { trackId: id, a: len, b: len };
-        } else { commit("Paste", E.paste(hist.present, sel, clipboard)); selection = { ...sel, a: sel.a + len, b: sel.a + len }; }
+        const len = Math.max(...clipboard.map((cs) => cs.reduce((s, c) => s + E.clipLen(c), 0)));
+        const audioSel = sel && project.tracks.some((t) => isSel(t.id) && !E.isLabelTrack(t));
+        if (!sel || !audioSel) { // no audio target: paste as new track(s)
+          const ts = clipboard.map((cs) => ({ id: nextId++, name: "Pasted audio", kind: "import", clips: cs.map((c) => ({ ...c })) }));
+          commit("Paste", { ...hist.present, tracks: [...hist.present.tracks, ...ts] });
+          selection = { trackId: ts[0].id, a: len, b: len };
+        } else { commit("Paste", E.pasteMany(hist.present, sel, clipboard)); selection = { ...sel, a: sel.a + len, b: sel.a + len }; }
         break;
       }
-      case "selectall": { const t = activeTrack(); if (t) selection = { trackId: t.id, a: 0, b: E.trackLen(t) }; break; }
+      case "selectall": if (project.tracks.length) selection = { trackId: activeTrack()!.id, a: 0, b: timelineLen, tracks: project.tracks.map((t) => t.id) }; break;
+      case "split": {
+        if (!sel) { toast("Click where you want to split first", "warn"); break; }
+        const next = E.splitClips(hist.present, sel);
+        if (next.tracks.every((t, i) => t === hist.present.tracks[i])) { toast("Nothing to split here (that's already the edge of the clip)", "warn"); break; }
+        commit("Split clip", next); break;
+      }
+      case "join": {
+        if (!sel || !hasRange()) { toast("Select across the clips you want to join, then press Ctrl+J", "warn"); break; }
+        const next = E.joinClips(hist.present, sel);
+        if (next.tracks.every((t, i) => E.clipBounds(t).filter((b) => b.split).length === E.clipBounds(hist.present.tracks[i]).filter((b) => b.split).length)) { toast("No split clips in the selection to join", "warn"); break; }
+        commit("Join clips", next); break;
+      }
+      case "addlabel": addLabel(); break;
+      case "labeltrack": { const id = newLabelTrack(); selection = { trackId: id, a: sel?.a ?? 0, b: sel?.b ?? 0 }; break; }
+      case "labelsmarkers": labelsToMarkers(); break;
+      case "importlabels": await importLabels(); break;
+      case "exportlabels": await exportLabels(); break;
+      case "toggleview": toggleView(); break;
       case "playpause": {
         // Space: pause / resume the running playback in place
         if (level.playing) { await api.pausePlayback(!level.play_paused); break; }
-        const t = activeTrack(); if (!t || !t.clips.length) break;
+        const t = project.tracks.find((x) => x.id === sel?.trackId && x.clips.length) ?? project.tracks.find((x) => isSel(x.id) && x.clips.length) ?? project.tracks.find((x) => x.clips.length); if (!t) break;
         const ranged = sel && sel.trackId === t.id && hasRange();
         const clips = ranged ? E.extract(t, sel!.a, sel!.b) : t.clips;
         const start = !ranged && sel && sel.trackId === t.id ? sel.a : 0;
@@ -155,7 +289,7 @@
       case "record": await toggleRecord(); break;
       case "import": await importFile(); break;
       case "importaup3": await importAudacity(); break;
-      case "export": if (activeTrack()) showExport = true; else toast("Nothing to export", "warn"); break;
+      case "export": if (activeTrack()?.clips.length) showExport = true; else toast(activeTrack() && E.isLabelTrack(activeTrack()!) ? "Pick an audio track to export (labels: File → Export Labels…)" : "Nothing to export", "warn"); break;
       case "save": await saveProject(false); break;
       case "saveas": await saveProject(true); break;
       case "open": await openProject(); break;
@@ -230,6 +364,7 @@
   let analysis = $state<Analysis | null>(null);
   async function studioSound(strength: "Subtle" | "Medium" | "Strong") {
     const t = activeTrack(); if (!t) return;
+    if (!t.clips.length) { toast("Pick an audio track first", "warn"); return; }
     studioBusy = true;
     try {
       const r = await api.studioSound(t.clips, strength);
@@ -328,7 +463,6 @@
   }
   let ab = $state(false); // true = hear the original (effects bypassed)
   let lufs = $state<number | null>(null);
-  let zoom = $state(1);
   const setZoom = (z: number) => (zoom = Math.max(1, Math.min(12, z)));
   const fxFor = (t: E.EditTrack) => (ab ? [] : activeChain(t.fx));
 
@@ -380,8 +514,9 @@
       if (k === "s") return e.shiftKey ? "saveas" : "save";
       if (k === "r" && e.shiftKey) return "savelast";
       if (k === "p" && !e.shiftKey) return "pause";
+      if (k === "g" && e.shiftKey) return "toggleview";
       if (e.shiftKey) return null;
-      return ({ y: "redo", x: "cut", c: "copy", v: "paste", a: "selectall", i: "import", e: "export", o: "open", n: "new" } as Record<string, Action>)[k] ?? null;
+      return ({ y: "redo", x: "cut", c: "copy", v: "paste", a: "selectall", i: "import", e: "export", o: "open", n: "new", k: "split", j: "join", b: "addlabel" } as Record<string, Action>)[k] ?? null;
     }
     if (e.altKey) return null;
     if (e.key === "Delete" || e.key === "Backspace") return "delete";
@@ -560,28 +695,53 @@
         {/if}
         {#each project.tracks as t (t.id)}
           {@const len = E.trackLen(t)}
+          {@const sel = isSel(t.id) ? selection : null}
+          {@const lab = E.isLabelTrack(t)}
           <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <div class="track" class:act={selection?.trackId === t.id}>
+          <div class="track" class:act={selection?.trackId === t.id} class:multi={isSel(t.id) && selIds().length > 1} data-tid={t.id}>
             <div class="thead">
-              <button class="play" onclick={() => togglePlay(t)}>{playingId === t.id && level.playing && !level.play_paused ? "❚❚" : "▶"}</button>
+              {#if !lab}<button class="play" onclick={() => togglePlay(t)}>{playingId === t.id && level.playing && !level.play_paused ? "❚❚" : "▶"}</button>{/if}
               {#if playingId === t.id && level.playing}<button class="play" title="Stop" onclick={() => run("stop")}>■</button>{/if}
               <div class="tname" title={t.clips.map((c) => c.src).join("\n")}>{t.name}</div>
               <span class="tag {t.kind}">{t.kind}</span>
               {#if t.muted}<button class="tag flag" title="Muted in Audacity (left out of Send Back to Video). Click to unmute." onclick={() => toggleTrackFlag(t.id, "muted")}>muted</button>{/if}
               {#if t.solo}<button class="tag flag" title="Solo in Audacity. Click to clear." onclick={() => toggleTrackFlag(t.id, "solo")}>solo</button>{/if}
-              <span class="small">{fmtTime(len)}{t.clips.length > 1 ? ` · ${t.clips.length} clips` : ""}{t.fx?.some((f) => !f.bypass) ? ` · ${t.fx.filter((f) => !f.bypass).length} fx` : ""}
-                {#if selection?.trackId === t.id && selection.b - selection.a > 0.0005} · sel {fmtTime(selection.a)}–{fmtTime(selection.b)}{/if}</span>
+              {#if lab}
+                <span class="small">{(t.labels ?? []).length} label{(t.labels ?? []).length === 1 ? "" : "s"}</span>
+                <button class="small vbtn" title="Add a label at the cursor or selection (Ctrl+B)" onclick={() => { if (!isSel(t.id)) selection = { trackId: t.id, a: selection?.a ?? 0, b: selection?.b ?? 0 }; addLabel(); }}>＋ Label</button>
+                <button class="small vbtn" title="Save these labels as a text file (Audacity format)" onclick={() => { selection = { trackId: t.id, a: selection?.a ?? 0, b: selection?.b ?? 0 }; exportLabels(); }}>Export…</button>
+                <button class="small vbtn" title="Copy all labels to project markers (chapters in exports and Send Back to Video)" onclick={labelsToMarkers}>→ Markers</button>
+              {:else}
+                <span class="small">{fmtTime(len)}{t.clips.length > 1 ? ` · ${t.clips.length} clips` : ""}{t.fx?.some((f) => !f.bypass) ? ` · ${t.fx.filter((f) => !f.bypass).length} fx` : ""}
+                  {#if sel && sel.b - sel.a > 0.0005} · sel {fmtTime(sel.a)}–{fmtTime(sel.b)}{/if}</span>
+                <button class="small vbtn" class:on={t.view === "spectrogram"} title="Waveform / spectrogram (Ctrl+Shift+G)" onclick={() => setView(t.id, { view: t.view === "spectrogram" ? "wave" : "spectrogram" }, t.view === "spectrogram" ? "Waveform view" : "Spectrogram view")}>{t.view === "spectrogram" ? "▤ Spectrogram" : "〰 Waveform"}</button>
+                {#if t.view === "spectrogram"}
+                  <select class="small vsel" title="Frequency scale" value={t.specScale ?? "log"} onchange={(e) => setView(t.id, { specScale: (e.target as HTMLSelectElement).value as E.SpecScale }, "Spectrogram scale")}>
+                    <option value="log">Log</option><option value="linear">Linear</option></select>
+                  <select class="small vsel" title="Colours" value={t.specColors ?? "classic"} onchange={(e) => setView(t.id, { specColors: (e.target as HTMLSelectElement).value as E.SpecColors }, "Spectrogram colours")}>
+                    <option value="classic">Classic</option><option value="inferno">Inferno</option><option value="grey">Greyscale</option></select>
+                {/if}
+              {/if}
               <button class="x" onclick={() => removeTrack(t.id)} title="Remove from project (file is kept)">✕</button>
             </div>
-            <div class="scroll"><div style="width:{zoom * 100}%">
+            <div class="scroll" onscroll={syncScroll}><div style="width:{zoom * 100 * Math.max(len, timelineLen * 0.02) / timelineLen}%">
+            {#if lab}
+              <LabelLane labels={t.labels ?? []} duration={Math.max(len, timelineLen * 0.02)} active={selection?.trackId === t.id} selection={sel} focusId={focusLabel}
+                onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)}
+                onedit={(id, text) => commit("Edit label", E.setLabels(hist.present, t.id, (ls) => ls.map((l) => (l.id === id ? { ...l, text } : l))))}
+                ondelete={(id) => commit("Delete label", E.setLabels(hist.present, t.id, (ls) => ls.filter((l) => l.id !== id)))}
+                onpick={(l) => (selection = { trackId: t.id, a: l.t0, b: l.t1 })} />
+            {:else}
             <WaveCanvas peaks={E.trackPeaks(t, sources, Math.round(2000 * zoom))} duration={len} active={selection?.trackId === t.id}
-              selection={selection?.trackId === t.id ? selection : null} progress={progressFor(t)} markers={project.markers ?? []}
-              onselect={(a, b) => (selection = { trackId: t.id, a, b })}
+              selection={sel} progress={progressFor(t)} markers={project.markers ?? []} bounds={E.clipBounds(t)}
+              spec={t.view === "spectrogram" ? specs.get(t.id)?.spec ?? null : null} specScale={t.specScale ?? "log"} specColors={t.specColors ?? "classic"}
+              onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)} onpickclip={(at) => pickClip(t, at)}
               color={t.kind === "obs" ? "#8b7bff" : t.kind === "recovered" ? "#ffb020" : "#19d3b0"} />
+            {/if}
             </div></div>
           </div>
         {/each}
-        {#if project.tracks.length}<div class="small hint2">Drag to select · Shift-click to extend · Ctrl+X/C/V · Del · Ctrl+A · Ctrl+Z / Ctrl+Y · Space play/pause · M marker · [ ] jump · Ctrl+scroll or +/− zoom ({zoom.toFixed(1)}×) — edits never change your original files</div>{/if}
+        {#if project.tracks.length}<div class="small hint2">Drag to select (drag up/down for more tracks, Ctrl-click adds a track) · Shift-click to extend · Ctrl+X/C/V · Del · Ctrl+A · Ctrl+K split · Ctrl+J join · double-click a clip · Ctrl+B label · Ctrl+Z / Ctrl+Y · Space play/pause · M marker · [ ] jump · Ctrl+scroll or +/− zoom ({zoom.toFixed(1)}×) — edits never change your original files</div>{/if}
       </div>
     </section>
 
@@ -668,6 +828,10 @@
   .play { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
   .tname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
   .tag { font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 10px; background: #19d3b022; color: var(--accent); }
+  .track.multi { box-shadow: inset 3px 0 0 #4da3ff; }
+  .vbtn { padding: 1px 7px; border-radius: 10px; background: #ffffff0d; border: 1px solid #ffffff1a; cursor: pointer; } .vbtn.on { border-color: #19d3b0; color: #19d3b0; }
+  .vsel { padding: 0 4px; height: 22px; width: auto !important; flex: none; min-width: 0; }
+  .tag.labels { background: #ffb02022; color: #ffd27a; }
   .tag.audacity { background: #3d8bff22; color: #7fb2ff; }
   button.tag.flag { border: 1px solid #ffb02066; background: #ffb02014; color: var(--warn); cursor: pointer; padding: 0 6px; font-size: 11px; }
   .drophint { position: fixed; inset: 12px; border: 3px dashed #19d3b0; border-radius: 14px; background: #0b0f14cc; display: grid; place-items: center; z-index: 60; pointer-events: none; font-size: 18px; }

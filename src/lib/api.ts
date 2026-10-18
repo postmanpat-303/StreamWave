@@ -54,6 +54,9 @@ export const api = {
   /** Swap the live effect chain of the running playback (no restart, state carried over). */
   updateFx: (fx: FxArg[]) => invoke("update_fx", { fx }),
   pausePlayback: (pause: boolean) => invoke("pause_playback", { pause }),
+  spectrogram: (clips: ClipArg[], cols: number, fft = 2048) => invoke<ArrayBuffer>("spectrogram", { clips, cols, fft }),
+  saveTextFile: (path: string, contents: string) => invoke("save_text_file", { path, contents }),
+  readTextFile: (path: string) => invoke<string>("read_text_file", { path }),
   importAup3: (path: string, mediaDir: string | null) => invoke<Aup3Result>("import_aup3", { path, mediaDir }),
   importAudio: (path: string) => invoke<Waveform>("import_audio", { path, buckets: 4000 }),
   obsConnect: (host: string, port: number, password: string) => invoke<ObsStatus>("obs_connect", { host, port, password }),

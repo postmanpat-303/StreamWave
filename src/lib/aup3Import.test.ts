@@ -17,7 +17,7 @@ describe("aup3 import mapping", () => {
     let id = 1;
     const { tracks, markers } = buildFromAup3(r, (p) => p, () => id++);
     expect(tracks.map((t) => t.name)).toEqual(["Voice", "Music"]);
-    expect(tracks[0].clips).toEqual([{ src: "/m/01 a.wav", start: 0, end: 1 }, { src: "/m/01 s.wav", start: 0, end: 0.5 }, { src: "/m/01 b.wav", start: 0, end: 1.5 }]);
+    expect(tracks[0].clips).toEqual([{ src: "/m/01 a.wav", start: 0, end: 1 }, { src: "/m/01 s.wav", start: 0, end: 0.5, split: true }, { src: "/m/01 b.wav", start: 0, end: 1.5, split: true }]);
     expect(tracks[0].fx?.[0].fx).toEqual({ type: "Gain", db: -6 });
     expect(tracks[0].solo).toBe(true); expect(tracks[0].muted).toBeUndefined();
     expect(tracks[1].fx).toBeUndefined(); expect(tracks[1].muted).toBe(true);

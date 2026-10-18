@@ -7,6 +7,7 @@ mod export;
 mod studio;
 mod media;
 mod aup3;
+mod spectrogram;
 mod settings;
 mod waveform;
 
@@ -122,6 +123,28 @@ async fn obs_split(st: State<'_, AppState>, path: String) -> Result<Vec<media::S
     let out = st.rec_dir().join("OBS imports").join(stem);
     tauri::async_runtime::spawn_blocking(move || media::split_audio(&p, &out)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
+/// Spectrogram of the edited clips (binary, see spectrogram.rs).
+#[tauri::command]
+async fn spectrogram(cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>, cols: usize, fft: Option<usize>) -> Result<tauri::ipc::Response, String> {
+    let d = render::render(&cache, &clips).map_err(|e| e.to_string())?;
+    let v = tauri::async_runtime::spawn_blocking(move || spectrogram::compute(&d, cols, fft.unwrap_or(2048))).await.map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(v))
+}
+/// Save a small text file the user picked in a save dialog (label export). Only .txt.
+#[tauri::command]
+fn save_text_file(path: String, contents: String) -> Result<(), String> {
+    let p = std::path::Path::new(&path);
+    if !p.extension().map(|e| e.eq_ignore_ascii_case("txt")).unwrap_or(false) { return Err("Labels can only be saved as a .txt file".into()) }
+    std::fs::write(p, contents).map_err(|e| e.to_string())
+}
+/// Read a label text file the user picked (label import). Only .txt, at most 10 MB.
+#[tauri::command]
+fn read_text_file(path: String) -> Result<String, String> {
+    let p = std::path::Path::new(&path);
+    if !p.extension().map(|e| e.eq_ignore_ascii_case("txt")).unwrap_or(false) { return Err("Please pick a .txt label file".into()) }
+    if std::fs::metadata(p).map_err(|e| e.to_string())?.len() > 10_000_000 { return Err("That file is too big to be a label file".into()) }
+    std::fs::read_to_string(p).map_err(|e| e.to_string())
+}
 /// Read-only import of an Audacity 3 project: audio is extracted to WAV files in `media_dir`
 /// (default: <recordings>/Audacity imports/<name>), the .aup3 itself is never written to.
 #[tauri::command]
@@ -208,6 +231,9 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &it("export", "Export...", Some("CmdOrCtrl+E"))?,
         &it("sendvideo", "Send Back to Video...", None)?,
         &PredefinedMenuItem::separator(app)?,
+        &it("importlabels", "Import Labels...", None)?,
+        &it("exportlabels", "Export Labels...", None)?,
+        &PredefinedMenuItem::separator(app)?,
         &PredefinedMenuItem::quit(app, None)?,
     ])?;
     let edit = Submenu::with_items(app, "Edit", true, &[
@@ -221,6 +247,18 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &it("delete", "Delete  (Del / Backspace)", None)?,
         &PredefinedMenuItem::separator(app)?,
         &it("selectall", "Select All", Some("CmdOrCtrl+A"))?,
+        &PredefinedMenuItem::separator(app)?,
+        &it("split", "Split Clip", Some("CmdOrCtrl+K"))?,
+        &it("join", "Join Clips", Some("CmdOrCtrl+J"))?,
+        &PredefinedMenuItem::separator(app)?,
+        &it("addlabel", "Add Label at Selection", Some("CmdOrCtrl+B"))?,
+        &it("labeltrack", "New Label Track", None)?,
+        &it("labelsmarkers", "Copy Labels to Markers", None)?,
+    ])?;
+    let view = Submenu::with_items(app, "View", true, &[
+        &it("toggleview", "Waveform / Spectrogram (selected tracks)", Some("CmdOrCtrl+Shift+G"))?,
+        &it("zoomin", "Zoom In  (+)", None)?,
+        &it("zoomout", "Zoom Out  (−)", None)?,
     ])?;
     let transport = Submenu::with_items(app, "Transport", true, &[
         &it("playpause", "Play / Pause  (Space)", None)?,
@@ -236,7 +274,7 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &PredefinedMenuItem::separator(app)?,
         &it("about", "About StreamWave", None)?,
     ])?;
-    app.set_menu(Menu::with_items(app, &[&file, &edit, &transport, &help])?)?;
+    app.set_menu(Menu::with_items(app, &[&file, &edit, &view, &transport, &help])?)?;
     app.on_menu_event(|app, ev| { let _ = app.emit("menu", ev.id().0.clone()); });
     Ok(())
 }
@@ -290,7 +328,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
+            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())

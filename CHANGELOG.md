@@ -2,6 +2,27 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.8.0 (2026-10-18)
+### Added (Audacity-style editing, batch 1)
+- **Spectrogram view** per track: use the 〰 / ▤ button, or **View → Waveform / Spectrogram** (Ctrl+Shift+G) for the selected tracks.
+  - Log or linear frequency scale, with a frequency axis.
+  - Classic, Inferno or Greyscale colours.
+  - Computed in the background from the edited audio (2048-point FFT, Hann window, −100 to 0 dB), and saved with the project.
+- **Multi-track selection.** Drag up or down across tracks, or Ctrl-click (⌘-click) a track to add or remove it. **Ctrl+A** now selects every track. Cut, copy, paste, delete, split and join apply to all selected tracks. Copying from several tracks and pasting puts each piece back in its own track.
+- **Label tracks:**
+  - **Ctrl+B** (Edit → Add Label at Selection) adds a point or range label and lets you type straight away. A label track is created if there isn't one.
+  - Labels are editable and deletable, and ▾ selects a label's range.
+  - Labels move with the audio when you cut, delete or paste across them.
+  - **File → Export Labels…** saves Audacity-compatible text; **File → Import Labels…** reads it.
+  - **→ Markers** / Edit → Copy Labels to Markers turns labels into markers, which become chapters on export and Send Back to Video.
+- **Split and join clips:** **Ctrl+K** (Edit → Split Clip) splits at the cursor or at both ends of a selection. **Ctrl+J** (Edit → Join Clips) removes the splits inside the selection.
+  - Ctrl+I stays *Import*, so Split uses Ctrl+K instead of Audacity's Ctrl+I. Ctrl+J matches Audacity.
+  - Splits are shown on the waveform, and double-click selects a whole clip.
+  - Clips imported from Audacity projects keep their boundaries as splits.
+- All tracks now share one timeline, so a 2-minute track is drawn half as long as a 4-minute one, and selections line up across tracks.
+### Fixed
+- Rendering a clip list that was cut at arbitrary points is now sample-exact. Previously each clip's length was rounded on its own, so a cut could drop or double one sample. A test checks that split clips render identically to the whole clip.
+
 ## 0.7.0 (2026-10-18)
 ### Added
 - **Import Audacity 3 projects (`.aup3`).** Use **File → Import Audacity Project…**, pick an `.aup3` in the Import dialog, or drag one onto the window.
