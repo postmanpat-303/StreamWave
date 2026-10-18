@@ -91,6 +91,10 @@ chmod +x StreamWave_*_amd64.AppImage
 ```
 Install FFmpeg from your distro (`sudo apt install ffmpeg`, `sudo dnf install ffmpeg-free`, `sudo pacman -S ffmpeg`) for formats other than WAV and for OBS video files. Audio works through PipeWire, PulseAudio or JACK.
 
+### macOS 11+ (Apple Silicon and Intel)
+Download `StreamWave_<version>_universal.dmg` (or the `.app.zip`) from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest), open it and drag **StreamWave** into **Applications**.
+**The first time, right-click (or Control-click) StreamWave in Applications and choose Open, then click Open again.** The app isn't notarised by Apple yet, so a normal double-click is blocked the first time. After that it opens normally. Allow microphone access when macOS asks. For MP3/FLAC/Opus export and OBS video import, install FFmpeg (`brew install ffmpeg`).
+
 ### Updates
 From 0.6.0 on, StreamWave can update itself. Use **Help → Check for updates…** (or the button in About). It shows what's new and only downloads when you click **Download & install**. A quiet check also runs at startup, at most once a day, and you can turn it off in Settings. Updates are signed and verified before they're installed.
 The Windows installer and the AppImage can self-update. The `.deb` cannot, so update it from Releases. **0.5.x has no updater, so install 0.6.0 by hand once.**
@@ -128,7 +132,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [x] In-app update check (0.6.0)
 - [x] Audacity 3 (`.aup3`) project import (0.7.0)
 - [x] Spectrogram view, multi-track selection, label tracks, split / join clips (0.8.0)
-- [ ] Code-signed Windows installer, Flatpak, macOS build
+- [ ] Code-signed Windows installer, notarised macOS build, Flatpak
 
 Ideas welcome; please open an issue.
 
@@ -156,7 +160,7 @@ You can bring existing work across: **File → Import Audacity Project…** (or 
 *Audacity® is a trademark of its respective owners. StreamWave is an independent project and isn't affiliated with or endorsed by Audacity or Muse Group. The importer was written from scratch and contains no Audacity code.*
 
 **Is there a Mac version?**
-Not yet. Tauri supports macOS, so it's on the roadmap.
+Yes: a universal build (Apple Silicon and Intel, macOS 11 or later). It isn't notarised yet, so the first time, right-click the app and choose **Open**.
 
 **Is it really free?**
 Yes, MIT-licensed, no accounts, no telemetry, everything runs locally.

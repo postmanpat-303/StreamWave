@@ -154,8 +154,10 @@ jobs:
             gh release upload "$TAG" --clobber latest.json
           fi
           gh release download "$TAG" --pattern SHA256SUMS.txt --clobber 2>/dev/null || gh release download "v$VER" --pattern SHA256SUMS.txt --clobber 2>/dev/null || touch SHA256SUMS.txt
-          grep -v -E '_universal\.|latest\.json' SHA256SUMS.txt > sums.new || true
-          shasum -a 256 StreamWave_${VER}_universal.* latest.json 2>/dev/null >> sums.new || shasum -a 256 StreamWave_${VER}_universal.* >> sums.new
+          # replace the Mac lines (and latest.json's, only if we uploaded a new one); keep everything else
+          if [ -f latest-darwin.json ]; then DROP='_universal\.|  latest\.json$'; NEW="StreamWave_${VER}_universal.* latest.json"; else DROP='_universal\.'; NEW="StreamWave_${VER}_universal.*"; fi
+          grep -v -E "$DROP" SHA256SUMS.txt > sums.new || true
+          shasum -a 256 $NEW >> sums.new
           sort -k2 -u sums.new > SHA256SUMS.txt
           cat SHA256SUMS.txt
           gh release upload "$TAG" --clobber SHA256SUMS.txt
