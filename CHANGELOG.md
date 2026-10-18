@@ -5,10 +5,11 @@ All notable changes to StreamWave are documented here. The format is loosely bas
 ## 0.8.4 (2026-10-18)
 ### Added
 - **StreamWave for Mac.** One universal app for Apple Silicon and Intel Macs, macOS 11 Big Sur or later, as `StreamWave_0.8.4_universal.dmg` (drag into Applications) and `StreamWave_0.8.4_universal.app.zip`. It's ad-hoc signed but not notarised yet, so the first time right-click the app and choose **Open** (on newer macOS: **System Settings → Privacy & Security → Open Anyway**). FFmpeg is found in the Homebrew and MacPorts folders too (`brew install ffmpeg`), because apps opened from Finder get a short `PATH`.
-- The website, README and user guide show macOS next to Windows and Linux, with system requirements and the first-launch steps.
+- **Linux packages for every family of distros**, named like the other Wave apps: `StreamWave-0.8.4-linux-x86_64.deb` (Debian, Ubuntu, Mint, Pop!_OS), `.rpm` (Fedora, RHEL, openSUSE) and `.pkg.tar.zst` (Arch, CachyOS, Manjaro, EndeavourOS; built with `makepkg` from `packaging/arch/streamwave-bin/PKGBUILD`), next to the AppImage. The .deb and .rpm now declare the ALSA library and recommend FFmpeg. `scripts/package-linux.sh` builds them all.
+- The website, README and user guide show macOS next to Windows and Linux, with system requirements, the first-launch steps and install commands per Linux distro.
 
 ### Changed
-- **Updates on Mac are manual for now.** There's no in-app updater on Mac yet, so instead of a failed check, **Help → Check for updates** (and the quiet startup check) reads the latest release from GitHub and, when there's a newer version, shows what's new with an **Open download page** button instead of Download & install. Windows and Linux keep the signed in-app updater; `latest.json` still lists only those two.
+- **Updates on Mac are manual for now.** There's no in-app updater on Mac yet, so instead of a failed check, **Help → Check for updates** (and the quiet startup check) reads the latest release from GitHub and, when there's a newer version, shows what's new with an **Open download page** button instead of Download & install. The same goes for the Linux .deb, .rpm and Arch packages, which the in-app updater can't replace: the check tells you about the new version and opens the download page instead of offering a download that would fail. Windows and the Linux AppImage keep the signed in-app updater; `latest.json` still lists only those two.
 
 ## 0.8.3 (2026-10-18)
 ### Changed

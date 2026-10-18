@@ -30,6 +30,21 @@ impl AppState {
 #[tauri::command] fn list_hosts() -> Vec<String> { devices::host_ids().iter().map(|h| h.name().to_string()).collect() }
 #[tauri::command] fn get_settings(st: State<AppState>) -> Settings { st.settings.lock().clone() }
 #[tauri::command] fn recordings_dir(st: State<AppState>) -> String { st.rec_dir().to_string_lossy().into() }
+/// How this copy was installed ("appimage", "deb", "rpm", "nsis", "msi", "app", or "unknown" for dev builds).
+/// The bundler stamps it into the binary. Only the AppImage, the Windows installer and the Mac app can use the
+/// in-app updater (latest.json only lists the AppImage for Linux); .deb/.rpm/Arch packages are updated by hand.
+#[tauri::command] fn install_kind() -> &'static str {
+    use tauri::utils::config::BundleType;
+    match tauri::utils::platform::bundle_type() {
+        Some(BundleType::AppImage) => "appimage",
+        Some(BundleType::Deb) => "deb",
+        Some(BundleType::Rpm) => "rpm",
+        Some(BundleType::Nsis) => "nsis",
+        Some(BundleType::Msi) => "msi",
+        Some(BundleType::App) | Some(BundleType::Dmg) => "app",
+        _ => "unknown",
+    }
+}
 
 #[tauri::command]
 fn select_input(st: State<AppState>, id: Option<String>) -> Result<(), String> {
@@ -347,7 +362,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            list_devices, list_hosts, get_settings, recordings_dir, select_input, select_output, set_latency, save_settings,
+            list_devices, list_hosts, get_settings, recordings_dir, install_kind, select_input, select_output, set_latency, save_settings,
             start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])

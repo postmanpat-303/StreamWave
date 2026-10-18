@@ -27,7 +27,7 @@
 
 <p align="center">
   <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for Windows (.exe)" src="https://img.shields.io/badge/Windows_10%2F11-.exe_installer-0078d4?style=for-the-badge"></a>
-  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for Linux (AppImage)" src="https://img.shields.io/badge/Linux-AppImage-e95420?style=for-the-badge"></a>
+  <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for Linux (.deb, .rpm, Arch package or AppImage)" src="https://img.shields.io/badge/Linux-deb_%C2%B7_rpm_%C2%B7_Arch_%C2%B7_AppImage-e95420?style=for-the-badge"></a>
   <a href="https://github.com/postmanpat-303/StreamWave/releases/latest"><img alt="Download for macOS 11+ (universal .dmg, Apple Silicon and Intel)" src="https://img.shields.io/badge/macOS_11%2B-universal_.dmg-555555?style=for-the-badge"></a>
 </p>
 
@@ -94,22 +94,27 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | | Windows | Linux | macOS |
 |---|---|---|---|
 | **System** | Windows 10 or 11, 64-bit | 64-bit (x86_64), any modern distro | macOS 11 Big Sur or later, Apple Silicon (M1 and newer) or Intel: one universal app |
-| **Download** | `StreamWave_<version>_x64-setup.exe` | `StreamWave_<version>_amd64.AppImage` (or `.deb`) | `StreamWave_<version>_universal.dmg` (or `.app.zip`) |
+| **Download** | `StreamWave_<version>_x64-setup.exe` | `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE), `.pkg.tar.zst` (Arch) or `StreamWave_<version>_amd64.AppImage` (any distro) | `StreamWave_<version>_universal.dmg` (or `.app.zip`) |
 | **FFmpeg** (formats other than WAV) | included | from your distro | `brew install ffmpeg` |
-| **Updates** | in-app | in-app (AppImage) | manual for now, the app tells you and links here |
+| **Updates** | in-app | in-app for the AppImage; .deb/.rpm/Arch: install the new package (the app tells you) | manual for now, the app tells you and links here |
 
 ### Windows 10/11
 1. Download **`StreamWave_<version>_x64-setup.exe`** from [Releases](https://github.com/postmanpat-303/StreamWave/releases/latest).
 2. Run it. No admin rights are needed; it installs for your user only. FFmpeg is included.
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
-### Linux
-Download **`StreamWave_<version>_amd64.AppImage`**, then:
-```bash
-chmod +x StreamWave_*_amd64.AppImage
-./StreamWave_*_amd64.AppImage
-```
-Install FFmpeg from your distro (`sudo apt install ffmpeg`, `sudo dnf install ffmpeg-free`, `sudo pacman -S ffmpeg`) for formats other than WAV and for OBS video files. Audio works through PipeWire, PulseAudio or JACK.
+### Linux (x86_64)
+Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.8.4`):
+
+| Distro | File | Install |
+|---|---|---|
+| **Debian, Ubuntu, Mint, Pop!_OS** | `StreamWave-<version>-linux-x86_64.deb` | `sudo apt install ./StreamWave-<version>-linux-x86_64.deb` |
+| **Fedora, RHEL, openSUSE** | `StreamWave-<version>-linux-x86_64.rpm` | `sudo dnf install ./StreamWave-<version>-linux-x86_64.rpm` (openSUSE: `sudo zypper install ./StreamWave-…rpm`) |
+| **Arch, CachyOS, Manjaro, EndeavourOS** | `StreamWave-<version>-linux-x86_64.pkg.tar.zst` | `sudo pacman -U ./StreamWave-<version>-linux-x86_64.pkg.tar.zst` (or build it yourself from [`packaging/arch/streamwave-bin/PKGBUILD`](packaging/arch/streamwave-bin/PKGBUILD) with `makepkg -si`) |
+| **Any distro** | `StreamWave_<version>_amd64.AppImage` | `chmod +x StreamWave_*_amd64.AppImage && ./StreamWave_*_amd64.AppImage` |
+
+The packages add StreamWave to your app menu and the `StreamWave` command (`streamwave` on Arch too). **The AppImage is the one that updates itself**; with a .deb, .rpm or Arch package, Help → Check for updates tells you about a new version and opens the download page, and you install the new package the same way (settings and projects are kept).
+Install FFmpeg from your distro (`sudo apt install ffmpeg`, `sudo dnf install ffmpeg-free`, `sudo pacman -S ffmpeg`) for formats other than WAV and for OBS video files; the .deb and .rpm recommend it. Audio works through PipeWire, PulseAudio or JACK.
 
 ### macOS 11+ (Apple Silicon and Intel)
 1. Download **`StreamWave_<version>_universal.dmg`** (or the `.app.zip`) from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest), open it and drag **StreamWave** into **Applications**. It's one universal app for Apple Silicon and Intel Macs.
@@ -120,7 +125,7 @@ Install FFmpeg from your distro (`sudo apt install ffmpeg`, `sudo dnf install ff
 
 ### Updates
 From 0.6.0 on, StreamWave can update itself. Use **Help → Check for updates…** (or the button in About). It shows what's new and only downloads when you click **Download & install**. A quiet check also runs at startup, at most once a day, and you can turn it off in Settings. Updates are signed and verified before they're installed.
-The Windows installer and the AppImage can self-update. The `.deb` cannot, so update it from Releases. **0.5.x has no updater, so install 0.6.0 by hand once.**
+The Windows installer and the AppImage can self-update. The `.deb`, `.rpm` and Arch packages can't: the check tells you about the new version and opens the download page, so install the new package over the old one. **0.5.x has no updater, so install 0.6.0 by hand once.**
 **On Mac, updates are manual for now.** The same check tells you when a new version is out and opens the download page; download the new `.dmg` and drag StreamWave into Applications to replace the old one. Your settings and projects are kept.
 
 ### Connect OBS
@@ -141,6 +146,8 @@ npm run tauri build    # installers in src-tauri/target/release/bundle
 ```
 
 Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). See the [user guide](GUIDE.md) for ASIO setup, bundling FFmpeg, and all keyboard shortcuts. Release builds can be run by hand from GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml), *Run workflow*). They produce a draft release.
+
+**Linux packages (maintainers):** [`scripts/package-linux.sh`](scripts/package-linux.sh) builds `StreamWave-<version>-linux-x86_64.deb`, `.rpm` and `.pkg.tar.zst` (Arch, via `makepkg` on the PKGBUILD) into `dist-linux/`, plus the signed updater AppImage when `TAURI_SIGNING_PRIVATE_KEY` is set. Needs `rpmbuild` and `makepkg` (Debian/Ubuntu: `pacman-package-manager`). Bump `pkgver` in the PKGBUILD with each release.
 
 **macOS (maintainers):** the universal Mac app can only be built on a Mac or GitHub's macOS runners: run the Release workflow with *platforms = macos* and a draft tag, and it builds `StreamWave_<version>_universal.dmg` and `.app.zip` ([`scripts/package-macos.sh`](scripts/package-macos.sh)), smoke-tests them and attaches them to that draft release with updated `SHA256SUMS.txt`. Locally on a Mac: Xcode Command Line Tools, `rustup target add aarch64-apple-darwin x86_64-apple-darwin`, then `scripts/package-macos.sh`.
 

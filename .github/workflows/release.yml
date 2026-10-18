@@ -27,7 +27,7 @@ jobs:
           - platform: windows-latest
             args: --config src-tauri/tauri.windows-installer.conf.json
           - platform: ubuntu-22.04
-            args: --bundles appimage,deb --config src-tauri/tauri.updater.conf.json
+            args: --bundles appimage,deb,rpm --config src-tauri/tauri.updater.conf.json
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4

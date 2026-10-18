@@ -146,7 +146,7 @@
       <a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">⬇ Download v0.8</a>
       <a class="btn" href="https://github.com/postmanpat-303/StreamWave">★ View on GitHub</a>
     </div>
-    <div class="meta">Windows 10/11 · Linux AppImage · macOS 11+ (Apple Silicon &amp; Intel) · MIT licence · No account, no telemetry</div>
+    <div class="meta">Windows 10/11 · Linux (deb, rpm, Arch, AppImage) · macOS 11+ (Apple Silicon &amp; Intel) · MIT licence · No account, no telemetry</div>
   </div>
   <svg class="wave" viewBox="0 0 1200 180" preserveAspectRatio="none" aria-hidden="true">
     <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#ffb347"/><stop offset=".5" stop-color="#ff7a1a"/><stop offset="1" stop-color="#ff4d1f"/></linearGradient>
@@ -270,14 +270,15 @@
 
 <section id="download" class="dl"><div class="wrap">
   <h2>Get StreamWave</h2>
-  <p class="sub">Version 0.8.4 for Windows, Linux and macOS. On Windows and Linux the app updates itself from Help → Check for updates; on Mac, updates are manual for now.</p>
+  <p class="sub">Version 0.8.4 for Windows, Linux and macOS. On Windows and the Linux AppImage the app updates itself from Help → Check for updates; on Mac and with the Linux packages, it tells you about new versions and you install them by hand.</p>
   <div class="dlbox">
     <div class="card"><div class="ico">🪟</div><h3>Windows 10 / 11</h3><p>NSIS installer, per-user, FFmpeg included. Updates itself.</p><p class="req">64-bit Windows 10 or 11</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download .exe</a></div>
-    <div class="card"><div class="ico">🐧</div><h3>Linux</h3><p>AppImage for any modern distro (also a .deb). Install FFmpeg from your package manager.</p><p class="req">64-bit (x86_64), PipeWire, PulseAudio or JACK</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download AppImage</a></div>
+    <div class="card"><div class="ico">🐧</div><h3>Linux</h3><p><b>.deb</b> for Debian/Ubuntu/Mint, <b>.rpm</b> for Fedora/openSUSE, <b>.pkg.tar.zst</b> for Arch/CachyOS/Manjaro, or the <b>AppImage</b> for any distro (the AppImage updates itself). Install FFmpeg from your package manager.</p><p class="req">64-bit (x86_64), PipeWire, PulseAudio or JACK</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download for Linux</a></div>
     <div class="card"><div class="ico">🍎</div><h3>macOS 11+</h3><p>One universal .dmg for Apple Silicon and Intel Macs. For MP3/FLAC export: <code>brew install ffmpeg</code>. Updates are manual for now.</p><p class="req">macOS 11 Big Sur or later, Apple Silicon (M1+) or Intel</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download .dmg</a></div>
   </div>
   <div class="firstrun">
     <p>🛡 <b>Windows:</b> the installer isn't code-signed yet. If SmartScreen appears, click <b>More info → Run anyway</b>.</p>
+    <p>🐧 <b>Linux install:</b> <code>sudo apt install ./StreamWave-0.8.4-linux-x86_64.deb</code> · <code>sudo dnf install ./StreamWave-0.8.4-linux-x86_64.rpm</code> · <code>sudo pacman -U ./StreamWave-0.8.4-linux-x86_64.pkg.tar.zst</code> · or <code>chmod +x</code> the AppImage and run it. Package installs update by installing the new package; the app tells you when there is one.</p>
     <p>🍎 <b>Mac, first launch:</b> drag StreamWave into Applications. It isn't notarised by Apple yet, so the first time <b>right-click (or Control-click) the app, choose Open</b>, then Open again. On newer macOS (Sequoia 15+), go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. After that it opens normally. To update, download the new .dmg and replace the app in Applications.</p>
   </div>
 </div></section>

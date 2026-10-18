@@ -5,7 +5,8 @@
   import { relaunch } from "@tauri-apps/plugin-process";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import { RELEASES_URL, REPO_URL } from "./about";
-  import { LATEST_RELEASE_API, friendlyError, isMacUserAgent, parseLatestRelease, renderMarkdown, shouldOffer } from "./updates";
+  import { LATEST_RELEASE_API, friendlyError, manualUpdateReason, parseLatestRelease, renderMarkdown, shouldOffer } from "./updates";
+  import { api } from "./api";
 
   let { quiet = false, skipped = null, busy = null, dirty = false, onskip, onchecked, onclose }: {
     /** startup check: render nothing unless an update should be offered */
@@ -30,8 +31,9 @@
   let got = $state(0);
   let total = $state<number | null>(null);
   const isWindows = navigator.userAgent.includes("Windows");
-  // No in-app updater on macOS yet (latest.json has no Mac entry): check GitHub's latest release and link to the download page.
-  const isMac = isMacUserAgent(navigator.userAgent);
+  // No in-app updater on macOS yet (latest.json has no Mac entry), and .deb/.rpm/Arch installs on Linux are updated by hand
+  // (latest.json only lists the AppImage): there we check GitHub's latest release and link to the download page.
+  let manual = $state<"mac" | "package" | null>(null);
 
   async function macLatest(): Promise<{ version: string; body: string }> {
     const ctl = new AbortController();
@@ -50,8 +52,11 @@
   onMount(() => {
     (async () => {
       try { current = await getVersion(); } catch {}
+      let kind: string | null = null;
+      try { kind = await api.installKind(); } catch {}
+      manual = manualUpdateReason(navigator.userAgent, kind);
       try {
-        if (isMac) {
+        if (manual) {
           const rel = await macLatest();
           onchecked();
           if (current && shouldOffer(rel.version, current, skipped, !quiet)) { info = { version: rel.version, body: rel.body, currentVersion: current }; phase = "available"; }
@@ -120,8 +125,12 @@
       {#if info.body}
         <div class="notes">{@html renderMarkdown(info.body)}</div>
       {/if}
-      {#if phase === "available" && isMac}
-        <p class="muted">On Mac, updates are installed by hand for now: download the new <b>.dmg</b>, open it and drag StreamWave into Applications to replace the old one. Your settings and projects are kept.</p>
+      {#if phase === "available" && manual}
+        {#if manual === "mac"}
+          <p class="muted">On Mac, updates are installed by hand for now: download the new <b>.dmg</b>, open it and drag StreamWave into Applications to replace the old one. Your settings and projects are kept.</p>
+        {:else}
+          <p class="muted">This copy was installed from a Linux package (.deb, .rpm or Arch), so update it the same way: download the new package for your distro and install it over this one. Your settings and projects are kept.</p>
+        {/if}
         <div class="actions">
           <button class="ghost" onclick={skip}>Skip this version</button>
           <button class="ghost" onclick={onclose}>Not now</button>

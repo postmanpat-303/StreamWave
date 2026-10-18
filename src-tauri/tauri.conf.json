@@ -53,7 +53,26 @@
     "homepage": "https://github.com/postmanpat-303/StreamWave",
     "license": "MIT",
     "category": "Music",
-    "copyright": "© 2026 Del (postmanpat), MIT licence"
+    "copyright": "© 2026 Del (postmanpat), MIT licence",
+    "linux": {
+      "deb": {
+        "depends": [
+          "libasound2"
+        ],
+        "recommends": [
+          "ffmpeg"
+        ],
+        "section": "sound"
+      },
+      "rpm": {
+        "depends": [
+          "libasound.so.2()(64bit)"
+        ],
+        "recommends": [
+          "/usr/bin/ffmpeg"
+        ]
+      }
+    }
   },
   "mainBinaryName": "StreamWave",
   "plugins": {

@@ -9,9 +9,17 @@ StreamWave runs on **Windows, Linux and macOS**. Get it from the [latest release
 | | Windows | Linux | macOS |
 |---|---|---|---|
 | **System** | Windows 10 or 11, 64-bit | 64-bit (x86_64), any modern distro (PipeWire, PulseAudio or JACK) | macOS 11 Big Sur or later; one universal app for Apple Silicon and Intel |
-| **File** | `StreamWave_<version>_x64-setup.exe` | `StreamWave_<version>_amd64.AppImage` or `.deb` | `StreamWave_<version>_universal.dmg` or `.app.zip` |
+| **File** | `StreamWave_<version>_x64-setup.exe` | `StreamWave-<version>-linux-x86_64.deb` / `.rpm` / `.pkg.tar.zst` (Arch), or `StreamWave_<version>_amd64.AppImage` | `StreamWave_<version>_universal.dmg` or `.app.zip` |
 | **FFmpeg** | included | `sudo apt install ffmpeg` (or your distro's package) | `brew install ffmpeg` |
-| **Updates** | in-app (Help → Check for updates) | in-app for the AppImage | manual for now: the check tells you about a new version and opens the download page |
+| **Updates** | in-app (Help → Check for updates) | in-app for the AppImage; .deb/.rpm/Arch: the check tells you and opens the download page, then install the new package | manual for now: the check tells you about a new version and opens the download page |
+
+**Linux, per distro:**
+- Debian / Ubuntu / Mint / Pop!_OS: `sudo apt install ./StreamWave-<version>-linux-x86_64.deb`
+- Fedora / RHEL: `sudo dnf install ./StreamWave-<version>-linux-x86_64.rpm` (openSUSE: `sudo zypper install ./StreamWave-<version>-linux-x86_64.rpm`)
+- Arch / CachyOS / Manjaro / EndeavourOS: `sudo pacman -U ./StreamWave-<version>-linux-x86_64.pkg.tar.zst`, or `makepkg -si` in `packaging/arch/streamwave-bin/`
+- Any distro: `chmod +x StreamWave_<version>_amd64.AppImage` and run it. This is the copy that updates itself.
+
+The packages put StreamWave in your app menu and install the `StreamWave` command. To update a package install, install the new package over it; settings and projects are kept.
 
 **First launch on Windows:** the installer isn't code-signed yet. If SmartScreen appears, click **More info → Run anyway**.
 **First launch on Mac:** open the `.dmg` and drag StreamWave into Applications. The app isn't notarised by Apple yet, so the first time **right-click (or Control-click) StreamWave and choose Open**, then click Open again. On newer macOS (Sequoia 15 and later), click Done, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to *"StreamWave" was blocked*. After that it opens normally. Allow microphone access when asked. To update on Mac, download the new `.dmg` and drag StreamWave into Applications again to replace the old one; settings and projects are kept.
@@ -128,6 +136,8 @@ ASIO devices then appear in the device list next to WASAPI ones, tagged `[Asio]`
 In OBS 28+: **Tools → WebSocket Server Settings → Enable**. Copy the password into StreamWave's OBS panel (default port 4455).
 
 ## Build on Linux (any distro)
+Release packages: `scripts/package-linux.sh` builds `dist-linux/StreamWave-<version>-linux-x86_64.deb`, `.rpm` and `.pkg.tar.zst` (Arch, with `makepkg` on `packaging/arch/streamwave-bin/PKGBUILD`), and the signed updater AppImage when `TAURI_SIGNING_PRIVATE_KEY` is set. It needs `rpmbuild` and `makepkg` (on Debian/Ubuntu: `sudo apt install rpm pacman-package-manager`).
+
 Install the Tauri prerequisites (https://tauri.app/start/prerequisites/). On Debian/Ubuntu:
 ```
 sudo apt install libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libasound2-dev build-essential pkg-config libssl-dev

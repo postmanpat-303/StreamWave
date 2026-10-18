@@ -64,6 +64,14 @@ export const LATEST_RELEASE_API = "https://api.github.com/repos/postmanpat-303/S
 /** True in the macOS app (WKWebView user agent). Updates are manual there for now: latest.json has no macOS entry. */
 export const isMacUserAgent = (ua: string) => /Macintosh|Mac OS X/.test(ua ?? "") && !/iPhone|iPad|Windows|Linux/.test(ua ?? "");
 
+/** Why this copy can't use the in-app updater: "mac" (no Mac entry in latest.json yet) or "package"
+ *  (.deb/.rpm/Arch on Linux; latest.json only has the AppImage). null = use the signed in-app updater. */
+export function manualUpdateReason(ua: string, installKind: string | null | undefined): "mac" | "package" | null {
+  if (isMacUserAgent(ua)) return "mac";
+  if (/Linux/.test(ua ?? "") && !/Android/.test(ua ?? "") && (installKind === "deb" || installKind === "rpm")) return "package";
+  return null;
+}
+
 export interface ReleaseInfo { version: string; body: string }
 
 /** Version and notes from GitHub's latest-release JSON; null for drafts, pre-releases or anything unexpected. */

@@ -42,6 +42,7 @@ export const api = {
   autosaveCheck: () => invoke<string | null>("autosave_check"),
   autosaveClear: () => invoke("autosave_clear"),
   ffmpegStatus: () => invoke<FfmpegInfo>("ffmpeg_status"),
+  installKind: () => invoke<string>("install_kind"),
   exportTrack: (clips: ClipArg[], fx: FxArg[], path: string, options: ExportOptions) => invoke<string>("export_track", { clips, fx, path, options }),
   studioSound: (clips: ClipArg[], strength: "Subtle" | "Medium" | "Strong") => invoke<{ analysis: Analysis; chain: FxArg[] }>("studio_sound", { clips, strength }),
   obsSplit: (path: string) => invoke<SplitTrack[]>("obs_split", { path }),

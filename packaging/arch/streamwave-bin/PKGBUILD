@@ -1,0 +1,28 @@
+# Maintainer: Del (postmanpat) <https://github.com/postmanpat-303>
+# Prebuilt StreamWave, repackaged from the .deb on the GitHub release (built on Ubuntu 22.04, glibc 2.35).
+# Build:  makepkg -si      (Arch / CachyOS / Manjaro / EndeavourOS)
+pkgname=streamwave-bin
+pkgver=0.8.4
+pkgrel=1
+pkgdesc="Audio recorder & editor for streamers and podcasters: OBS sync, one-click Studio Sound, live effects"
+arch=('x86_64')
+url="https://github.com/postmanpat-303/StreamWave"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'alsa-lib' 'libsoup3' 'cairo' 'gdk-pixbuf2' 'glib2' 'dbus' 'gcc-libs' 'glibc' 'hicolor-icon-theme')
+optdepends=('ffmpeg: export to MP3/FLAC/Opus/Ogg and import OBS video files'
+            'pipewire-alsa: route audio through PipeWire'
+            'pulseaudio-alsa: route audio through PulseAudio')
+provides=('streamwave')
+conflicts=('streamwave')
+options=('!strip' '!debug')
+source=("StreamWave-$pkgver-linux-x86_64.deb::$url/releases/download/v$pkgver/StreamWave-$pkgver-linux-x86_64.deb"
+        "LICENSE-$pkgver::https://raw.githubusercontent.com/postmanpat-303/StreamWave/v$pkgver/LICENSE")
+noextract=("StreamWave-$pkgver-linux-x86_64.deb")
+sha256sums=('SKIP' 'SKIP')
+
+package() {
+  bsdtar -xOf "StreamWave-$pkgver-linux-x86_64.deb" 'data.tar*' | bsdtar -xf - -C "$pkgdir"
+  # lower-case command too, so `streamwave` works from a terminal
+  ln -s StreamWave "$pkgdir/usr/bin/streamwave"
+  install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

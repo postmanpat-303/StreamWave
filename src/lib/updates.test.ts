@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareVersions, isNewer, shouldAutoCheck, shouldOffer, renderMarkdown, friendlyError, DAY_MS, isMacUserAgent, parseLatestRelease, LATEST_RELEASE_API } from "./updates";
+import { compareVersions, isNewer, shouldAutoCheck, shouldOffer, renderMarkdown, friendlyError, DAY_MS, isMacUserAgent, parseLatestRelease, LATEST_RELEASE_API, manualUpdateReason } from "./updates";
 
 describe("compareVersions", () => {
   it("orders release versions numerically", () => {
@@ -104,4 +104,21 @@ describe("macOS manual updates", () => {
   });
   it("uses this repo's API", () => expect(LATEST_RELEASE_API).toBe("https://api.github.com/repos/postmanpat-303/StreamWave/releases/latest"));
   it("treats WebKit fetch failures as offline", () => expect(friendlyError(new TypeError("Load failed"))).toMatch(/internet connection/));
+});
+
+describe("which installs update by hand", () => {
+  const mac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+  const linux = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko)";
+  const win = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/130.0";
+  it("Mac always", () => { expect(manualUpdateReason(mac, "app")).toBe("mac"); expect(manualUpdateReason(mac, null)).toBe("mac"); });
+  it(".deb / .rpm (and the Arch package, which carries the .deb binary) on Linux", () => {
+    expect(manualUpdateReason(linux, "deb")).toBe("package");
+    expect(manualUpdateReason(linux, "rpm")).toBe("package");
+  });
+  it("AppImage, Windows installer and dev builds keep the in-app updater", () => {
+    expect(manualUpdateReason(linux, "appimage")).toBeNull();
+    expect(manualUpdateReason(linux, "unknown")).toBeNull();
+    expect(manualUpdateReason(linux, null)).toBeNull();
+    expect(manualUpdateReason(win, "nsis")).toBeNull();
+  });
 });
