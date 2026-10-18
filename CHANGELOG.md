@@ -2,6 +2,20 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.8.1 (2026-10-18)
+### Fixed
+- Right-clicking the waveform on Windows showed WebView2's browser menu ("Save image as", "Copy image"). The browser context menu is now switched off app-wide, except in text boxes, which keep Cut/Copy/Paste.
+- Browser shortcuts that don't belong in an app are blocked: F5 / Ctrl+R reload, Ctrl+F find, Ctrl+G, Ctrl+H, Ctrl+U view source, F3, F7 caret browsing, Ctrl+= / Ctrl+- / Ctrl+0 and Ctrl+scroll page zoom, Alt+← / → back/forward, and F12 / Ctrl+Shift+I / Ctrl+Shift+C dev tools in release builds. Ctrl+P (print) no longer opens a print dialog; it stays the app's Pause. App hotkeys are unaffected.
+- An empty label track was drawn only a sliver wide. Label lanes now span the whole timeline.
+### Added
+- **Right-click menu** on waveforms and clips, in StreamWave's own style, with shortcut hints, greyed-out items that don't apply, and full keyboard control (arrows, Home/End, Enter, →/← for submenus, Esc, type-ahead).
+  - Cut, Copy, Paste, Delete, Split at cursor / selection edges, Join clips, Select whole clip, Add label here, Add marker here, Trim to selection, Silence selection.
+  - **Effects ▸** lists every effect. Picking one opens its settings dialog and applies it to just the selection: StreamWave renders the range into a new WAV (`media/Edits`) and swaps it in as one undoable edit, and your originals are never changed. "Add to track effects instead" keeps it live in the track chain. Also in this submenu: Fade in, Fade out, Normalize to −1 dB and Studio Sound.
+  - **Track ▸**: Rename, Mute, Solo, Waveform/Spectrogram, Delete track. The same menu opens from the track header, and double-clicking a track name renames it.
+  - Right-clicking outside the current selection first moves the cursor to the spot and track you clicked.
+- Right-click menus on **label tracks** (edit, select or delete label; add label; labels → markers; export; rename or delete the track) and on the **empty timeline area** (paste as new track, import audio, import Audacity project, new label track).
+- **Trim to selection** also trims label tracks, and **Silence selection** inserts real silence as its own clip.
+
 ## 0.8.0 (2026-10-18)
 ### Added (Audacity-style editing, batch 1)
 - **Spectrogram view** per track: use the 〰 / ▤ button, or **View → Waveform / Spectrogram** (Ctrl+Shift+G) for the selected tracks.

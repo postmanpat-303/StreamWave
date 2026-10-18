@@ -186,3 +186,24 @@ describe("labels", () => {
     expect(trackLen(L(M(), 3))).toBe(8);
   });
 });
+
+import { replaceRanges, trimMany, clipAt } from "./editModel";
+describe("selection effects, trim, clip lookup", () => {
+  it("replaces a range with rendered audio as its own clip", () => {
+    const p = replaceRanges(M(), 2, 5, new Map([[1, [{ src: "fx.wav", start: 0, end: 3 }]]]));
+    expect(L(p, 1).clips).toEqual([{ src: "a.wav", start: 0, end: 2 }, { src: "fx.wav", start: 0, end: 3, split: true }, { src: "a.wav", start: 5, end: 10, split: true }]);
+    expect(trackLen(L(p, 1))).toBeCloseTo(10);
+    expect(L(p, 2)).toEqual(L(M(), 2));
+  });
+  it("trim keeps only the selection on the selected tracks", () => {
+    const p = trimMany(M(), { trackId: 1, a: 2, b: 7, tracks: [3] });
+    expect(L(p, 1).clips).toEqual([{ src: "a.wav", start: 2, end: 7 }]);
+    expect(L(p, 2)).toEqual(L(M(), 2));
+    expect(L(p, 3).labels!.map((l) => [l.text, l.t0, l.t1])).toEqual([["mid", 1, 2], ["late", 4, 5]]);
+    expect(trimMany(M(), { trackId: 1, a: 3, b: 3 })).toEqual(M());
+  });
+  it("finds the clip under the pointer", () => {
+    const p = splitClips(M(), { trackId: 1, a: 4, b: 4 });
+    expect(clipAt(L(p, 1), 6)).toEqual({ a: 4, b: 10 }); expect(clipAt(L(p, 1), 1)).toEqual({ a: 0, b: 4 }); expect(clipAt(L(p, 1), 11)).toBeNull();
+  });
+});

@@ -128,6 +128,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [x] In-app update check (0.6.0)
 - [x] Audacity 3 (`.aup3`) project import (0.7.0)
 - [x] Spectrogram view, multi-track selection, label tracks, split / join clips (0.8.0)
+- [x] Right-click menu with effects on a selection; browser menu and shortcuts switched off (0.8.1)
 - [ ] Code-signed Windows installer, Flatpak, macOS build
 
 Ideas welcome; please open an issue.

@@ -54,6 +54,7 @@ export const api = {
   /** Swap the live effect chain of the running playback (no restart, state carried over). */
   updateFx: (fx: FxArg[]) => invoke("update_fx", { fx }),
   pausePlayback: (pause: boolean) => invoke("pause_playback", { pause }),
+  renderSelection: (clips: ClipArg[], fx: FxArg[], silence: boolean, name: string, dir: string | null) => invoke<string>("render_selection", { clips, fx, silence, name, dir }),
   spectrogram: (clips: ClipArg[], cols: number, fft = 2048) => invoke<ArrayBuffer>("spectrogram", { clips, cols, fft }),
   saveTextFile: (path: string, contents: string) => invoke("save_text_file", { path, contents }),
   readTextFile: (path: string) => invoke<string>("read_text_file", { path }),

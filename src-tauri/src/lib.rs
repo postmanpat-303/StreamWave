@@ -123,6 +123,26 @@ async fn obs_split(st: State<'_, AppState>, path: String) -> Result<Vec<media::S
     let out = st.rec_dir().join("OBS imports").join(stem);
     tauri::async_runtime::spawn_blocking(move || media::split_audio(&p, &out)).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
+/// Selection effects (context menu): render `clips` through `fx` (or as silence) into a new WAV
+/// under `dir` (default <recordings>/Edits). Sources are only read; the edit is undoable in the app.
+#[tauri::command]
+async fn render_selection(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>, fx: Option<Vec<fx::Slot>>, silence: Option<bool>, name: String, dir: Option<String>) -> Result<String, String> {
+    let d = render::render(&cache, &clips).map_err(|e| e.to_string())?;
+    let dir = dir.map(std::path::PathBuf::from).unwrap_or_else(|| st.rec_dir()).join("Edits");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let safe: String = name.chars().map(|c| if c.is_alphanumeric() || " -_.()".contains(c) { c } else { '_' }).take(60).collect();
+    let stamp = chrono::Local::now().format("%Y-%m-%d %H-%M-%S%.3f");
+    let path = dir.join(format!("{} {stamp}.wav", safe.trim()));
+    let slots = fx.unwrap_or_default();
+    let silence = silence.unwrap_or(false);
+    let out = path.clone();
+    tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<()> {
+        let mut d = d;
+        if silence { d.samples.iter_mut().for_each(|s| *s = 0.0) } else { fx::process_chain(&mut d, &slots) }
+        render::write_wav(&d, &out)
+    }).await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
+}
 /// Spectrogram of the edited clips (binary, see spectrogram.rs).
 #[tauri::command]
 async fn spectrogram(cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>, cols: usize, fft: Option<usize>) -> Result<tauri::ipc::Response, String> {
@@ -328,7 +348,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
+            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())

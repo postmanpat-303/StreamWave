@@ -163,6 +163,31 @@ export function pasteMany(p: Project, sel: Selection, clip: Clip[][]): Project {
   });
 }
 
+/** Replace [a,b] on the given tracks with new clips (e.g. a rendered effect), kept apart as their own clip. */
+export function replaceRanges(p: Project, a: number, b: number, byTrack: Map<number, Clip[]>): Project {
+  [a, b] = norm(a, b);
+  return { ...p, tracks: p.tracks.map((t) => {
+    const cs = byTrack.get(t.id); if (!cs || isLabelTrack(t)) return t;
+    const len = cs.reduce((s, c) => s + clipLen(c), 0);
+    const ins = cs.map((c, i) => (i === 0 ? { ...c, split: true } : { ...c }));
+    let r = insertAt(removeRange(t, a, b), a, ins);
+    r = splitTrackAt(r, a + len); return r;
+  }) };
+}
+/** Trim: keep only [a,b] on every selected track (labels too, moved to start at 0). */
+export function trimMany(p: Project, sel: Selection): Project {
+  const [a, b] = norm(sel.a, sel.b); if (b - a < EPS) return p;
+  return mapSel(p, sel, (t) => isLabelTrack(t)
+    ? { ...t, labels: (t.labels ?? []).filter((l) => l.t1 >= a - EPS && l.t0 <= b + EPS).map((l) => ({ ...l, t0: Math.max(l.t0, a) - a, t1: Math.min(l.t1, b) - a })) }
+    : { ...t, clips: merge(extract(t, a, b)) });
+}
+/** The clip under time t on a track, as a timeline range. */
+export function clipAt(t: EditTrack, at: number): { a: number; b: number } | null {
+  let pos = 0;
+  for (const c of t.clips) { const l = clipLen(c); if (at >= pos - EPS && at <= pos + l + EPS) return { a: pos, b: pos + l }; pos += l; }
+  return null;
+}
+
 // ---- split / join clips ---------------------------------------------------------
 /** Put a deliberate clip boundary at time t (no-op at the very start or end). */
 export function splitTrackAt(t: EditTrack, at: number): EditTrack {
