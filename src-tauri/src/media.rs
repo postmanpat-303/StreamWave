@@ -18,7 +18,7 @@ pub fn find_ffprobe() -> Option<PathBuf> {
     let p = ff.with_file_name(name);
     if p.is_file() { return Some(p) }
     let exe = if cfg!(windows) { "ffprobe.exe" } else { "ffprobe" };
-    std::env::split_paths(&std::env::var_os("PATH")?).map(|d| d.join(exe)).find(|p| p.is_file())
+    crate::export::tool_dirs().into_iter().map(|d| d.join(exe)).find(|p| p.is_file())
 }
 
 #[derive(Serialize, Clone, Debug)]

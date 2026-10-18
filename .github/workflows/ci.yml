@@ -26,3 +26,23 @@ jobs:
       - run: npm run check
       - run: npm run build
       - run: cargo test --lib --manifest-path src-tauri/Cargo.toml
+
+  # build check for the universal macOS app (no signing, no dmg)
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - run: cargo test --lib --manifest-path src-tauri/Cargo.toml
+      - run: npm run tauri build -- --target universal-apple-darwin --bundles app
+      - run: lipo -archs src-tauri/target/universal-apple-darwin/release/bundle/macos/StreamWave.app/Contents/MacOS/StreamWave
