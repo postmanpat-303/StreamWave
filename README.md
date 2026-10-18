@@ -31,6 +31,10 @@
   <a href="https://www.youtube.com/@whatgoesaround1551"><img alt="YouTube channel" src="https://img.shields.io/badge/%E2%96%B6_YouTube-channel-ff0000?style=flat-square&logo=youtube&logoColor=white"></a>
 </p>
 
+<p align="center">
+  <a href="assets/screenshots/01-main.png"><img src="assets/screenshots/01-main.png" alt="StreamWave main window: the big record button with live input meters, a podcast episode with Host mic, Guest (Discord) and Music bed tracks, chapter markers, a Show notes label track, and the Studio Sound, effects and OBS panels on the right" width="100%"></a>
+</p>
+
 ## ▶ Watch the promo
 
 <p align="center">
@@ -62,19 +66,22 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 
 ## 📸 Screenshots
 
-*Rendered from the actual StreamWave UI with a demo project.*
+*Real screenshots of StreamWave 0.8.2 on Linux, using a demo episode with self-generated voice and music. Click any image for full size.*
 
-**The main window** — recording while OBS records the stream. The OBS take comes back as separate mic / desktop / Discord tracks, scene changes land as markers, and the armed **30 s pre-record buffer** means you can hit *Save last 30 s* when you said something great before pressing record.
-
-![StreamWave main window while recording: live meters, pre-record buffer armed, three imported OBS tracks with waveforms, scene markers and an active selection](assets/screenshot-main.png)
-
-**✨ Studio Sound** — one click analyses the voice (noise floor, sibilance, plosives, room echo, loudness) and builds a fully editable chain: learned noise reduction, voice-curve EQ, de-esser, compressor and peak-safe **-16 LUFS** loudness. Tap A/B to compare before and after — live, while it plays.
-
-![Studio Sound after its analysis, with the editable effect chain it built: noise reduction, equalizer, de-esser, compressor, loudness and limiter](assets/screenshot-studio.png)
-
-**OBS sync** — locked to OBS over obs-websocket: record / pause / stop together, auto-import each audio track the moment OBS stops, and **Send back to video** drops your cleaned-up audio into a copy of the video without re-encoding the picture.
-
-![OBS panel while connected and recording in sync, with Follow OBS and auto-import enabled](assets/screenshot-obs.png)
+<table>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/02-context-menu.png"><img src="assets/screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound" width="100%"></a><br><b>Right-click anything.</b> Cut, split, label or apply an effect straight to the selection.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/03-spectrogram.png"><img src="assets/screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view, zoomed in, showing speech harmonics and a low hum band, with chapter markers above" width="100%"></a><br><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/04-effects.png"><img src="assets/screenshots/04-effects.png" alt="Effects panel for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup sliders), Loudness and Limiter" width="100%"></a><br><b>Live effects chain.</b> One-click presets build an editable chain that you hear instantly while it plays.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/05-aup3-import.png"><img src="assets/screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed" width="100%"></a><br><b>Bring your Audacity projects.</b> <code>.aup3</code> tracks and labels come across; your original file is only read.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/06-export.png"><img src="assets/screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="100%"></a><br><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/07-about.png"><img src="assets/screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.2, created by Derek Heasley, a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="100%"></a><br><b>Free and open source.</b> Made by Derek Heasley. If it saves you time, <a href="https://buymeacoffee.com/postmanpat">buy me a coffee</a> ☕</td>
+</tr>
+</table>
 
 ## ⬇ Install
 

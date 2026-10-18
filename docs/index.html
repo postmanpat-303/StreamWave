@@ -79,11 +79,26 @@
 
   .shots figure { margin:0; }
   .shots .shot { border:1px solid var(--line); border-radius:18px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.5); background:#120d09; }
-  .shots img { display:block; width:100%; }
+  .shots .shot a { display:block; }
+  .shots img { display:block; width:100%; height:auto; aspect-ratio:16/10; }
   .shots figcaption { padding:12px 16px; font-size:14px; color:var(--mut); }
   .shots figcaption b { color:var(--txt); }
-  .shots .duo { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px; }
-  @media (max-width:860px){ .shots .duo{ grid-template-columns:1fr; } }
+  .carousel { position:relative; margin-top:18px; }
+  .carousel .track { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 18px) / 2); gap:18px; overflow-x:auto; scroll-snap-type:x mandatory; scroll-behavior:smooth; scrollbar-width:none; padding-bottom:4px; border-radius:18px; }
+  .carousel .track::-webkit-scrollbar { display:none; }
+  .carousel .track:focus-visible { outline:2px solid var(--c2); outline-offset:4px; }
+  .carousel .shot { scroll-snap-align:start; transition:border-color .2s; }
+  .carousel .shot:hover { border-color:var(--c2); }
+  @media (max-width:760px){ .carousel .track{ grid-auto-columns:88%; } }
+  @media (prefers-reduced-motion:reduce){ .carousel .track{ scroll-behavior:auto; } }
+  .cbtn { position:absolute; top:calc(50% - 44px); transform:translateY(-50%); z-index:2; width:44px; height:44px; border-radius:50%; border:1px solid var(--line); background:rgba(13,10,8,.85); color:var(--txt); font-size:24px; line-height:1; cursor:pointer; display:grid; place-items:center; box-shadow:0 6px 24px rgba(0,0,0,.5); transition:background .15s, opacity .15s; }
+  .cbtn:hover { background:var(--c2); color:#0b0b14; }
+  .cbtn:disabled { opacity:0; pointer-events:none; }
+  .cbtn.prev { left:-14px; } .cbtn.next { right:-14px; }
+  @media (max-width:760px){ .cbtn{ display:none; } }
+  .dots { display:flex; justify-content:center; gap:8px; margin-top:16px; }
+  .dots button { width:9px; height:9px; padding:0; border:0; border-radius:50%; background:var(--line); cursor:pointer; transition:background .2s, width .2s; }
+  .dots button[aria-current="true"] { background:var(--c2); width:24px; border-radius:5px; }
 
   table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); border-radius:16px; overflow:hidden; }
   th, td { padding:14px 16px; text-align:left; border-bottom:1px solid var(--line); font-size:15px; }
@@ -168,20 +183,41 @@
 
 <section id="shots" class="shots"><div class="wrap">
   <h2>See it in action</h2>
-  <p class="sub">The actual StreamWave UI, running with a demo project.</p>
+  <p class="sub">Real screenshots of StreamWave 0.8.2 on Linux, with a demo podcast episode (self-generated voice and music).</p>
   <figure class="shot">
-    <img src="https://raw.githubusercontent.com/postmanpat-303/StreamWave/main/assets/screenshot-main.png" alt="StreamWave main window while recording: live meters, a 30-second pre-record buffer armed, and three OBS tracks (mic, desktop, Discord) imported as separate editable waveforms with scene markers">
-    <figcaption><b>Record, edit, clean up.</b> The OBS take comes back as separate mic / desktop / Discord tracks, scene changes become markers, and the armed 30 s pre-record buffer lets you save the moment after it happened.</figcaption>
+    <a href="screenshots/01-main.png"><img src="screenshots/01-main.png" alt="StreamWave main window: the big record button with live input meters, a podcast episode with Host mic, Guest (Discord) and Music bed tracks, chapter markers, a Show notes label track, and the Studio Sound, effects and OBS panels on the right" width="1600" height="1000" loading="lazy" decoding="async"></a>
+    <figcaption><b>Record, edit, clean up.</b> One big button to record with live meters, a multi-track timeline with markers and a label track for show notes, and Studio Sound, live effects and OBS sync one glance away.</figcaption>
   </figure>
-  <div class="duo">
-    <figure class="shot">
-      <img src="https://raw.githubusercontent.com/postmanpat-303/StreamWave/main/assets/screenshot-studio.png" alt="Studio Sound panel after analysing a voice track, showing the editable effect chain it built: noise reduction, equalizer, de-esser, compressor, loudness and limiter">
-      <figcaption><b>✨ Studio Sound.</b> One click analyses your voice and builds a fully editable chain — denoise, EQ, de-ess, compress, -16 LUFS — with a live A/B comparison.</figcaption>
-    </figure>
-    <figure class="shot">
-      <img src="https://raw.githubusercontent.com/postmanpat-303/StreamWave/main/assets/screenshot-obs.png" alt="StreamWave OBS panel while connected and recording in sync, with Follow OBS and auto-import enabled, plus the Send back to video button">
-      <figcaption><b>Locked to OBS.</b> Record in sync, import every audio track when OBS stops, and send the cleaned-up audio back into the video.</figcaption>
-    </figure>
+  <div class="carousel" role="region" aria-roledescription="carousel" aria-label="More StreamWave screenshots">
+    <button class="cbtn prev" type="button" aria-label="Previous screenshot">‹</button>
+    <div class="track" tabindex="0" aria-label="Screenshots, scroll sideways for more">
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="1 of 6">
+        <a href="screenshots/02-context-menu.png"><img src="screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Right-click anything.</b> Cut, split, label or apply an effect straight to the selection.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="2 of 6">
+        <a href="screenshots/03-spectrogram.png"><img src="screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view, zoomed in, showing speech harmonics and a low hum band, with chapter markers above" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="3 of 6">
+        <a href="screenshots/04-effects.png"><img src="screenshots/04-effects.png" alt="Effects panel for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup sliders), Loudness and Limiter" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Live effects chain.</b> One-click presets build an editable chain you hear instantly while it plays.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="4 of 6">
+        <a href="screenshots/05-aup3-import.png"><img src="screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Bring your Audacity projects.</b> Tracks and labels come across from .aup3; your original file is only read.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="5 of 6">
+        <a href="screenshots/06-export.png"><img src="screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="6 of 6">
+        <a href="screenshots/07-about.png"><img src="screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.2, created by Derek Heasley, a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Free and open source.</b> Made by Derek Heasley, MIT licensed, with a Buy me a coffee button if it saves you time.</figcaption>
+      </figure>
+    </div>
+    <button class="cbtn next" type="button" aria-label="Next screenshot">›</button>
+    <div class="dots" role="group" aria-label="Choose a screenshot"></div>
   </div>
 </div></section>
 
@@ -267,6 +303,25 @@
   frame(0);
   const bars = document.getElementById("bars");
   for (let i = 0; i < 48; i++) { const b = document.createElement("i"); b.style.animationDelay = (-(i * 0.09) % 1.4) + "s"; bars.appendChild(b); }
+  // screenshot carousel: buttons, dots and arrow keys on top of native scroll-snap
+  (() => {
+    const c = document.querySelector(".carousel"); if (!c) return;
+    const track = c.querySelector(".track"), slides = [...track.children], dots = c.querySelector(".dots");
+    const prev = c.querySelector(".prev"), next = c.querySelector(".next");
+    const step = () => slides[1].offsetLeft - slides[0].offsetLeft;
+    const go = (i) => track.scrollTo({ left: Math.max(0, Math.min(i, slides.length - 1)) * step() });
+    const cur = () => Math.round(track.scrollLeft / step());
+    slides.forEach((_, i) => { const d = document.createElement("button"); d.type = "button"; d.setAttribute("aria-label", "Show screenshot " + (i + 1)); d.onclick = () => go(i); dots.appendChild(d); });
+    const update = () => {
+      const i = cur(), max = track.scrollWidth - track.clientWidth - 2;
+      [...dots.children].forEach((d, j) => d.setAttribute("aria-current", j === i ? "true" : "false"));
+      prev.disabled = track.scrollLeft <= 2; next.disabled = track.scrollLeft >= max;
+    };
+    prev.onclick = () => go(cur() - 1); next.onclick = () => go(cur() + 1);
+    track.addEventListener("keydown", (e) => { if (e.key === "ArrowRight") { e.preventDefault(); go(cur() + 1); } if (e.key === "ArrowLeft") { e.preventDefault(); go(cur() - 1); } });
+    track.addEventListener("scroll", () => requestAnimationFrame(update), { passive: true });
+    addEventListener("resize", update); update();
+  })();
 </script>
 </body>
 </html>
