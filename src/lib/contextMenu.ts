@@ -18,12 +18,50 @@ export function nextEnabled(items: MenuItem[], i: number, dir: 1 | -1): number {
   }
   return -1;
 }
-/** Keep a w x h menu opened at (x, y) inside the viewport (flip left/up when needed). */
-export function placeMenu(x: number, y: number, w: number, h: number, vw: number, vh: number, m = 4): { x: number; y: number } {
-  const px = x + w + m > vw ? Math.max(m, x - w) : x;
-  const py = y + h + m > vh ? Math.max(m, vh - h - m) : y;
-  return { x: px, y: py };
+export interface Pt { x: number; y: number }
+export interface Rect { left: number; top: number; right: number; bottom: number }
+export interface Placement { x: number; y: number; maxH: number; side: "right" | "left" }
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** Place a w x h menu opened at the pointer (x, y) inside a vw x vh viewport (margin m).
+ *  Opens right/down; flips left/up at the pointer when there is no room; if it is taller
+ *  than the viewport it gets maxH (and scrolls). */
+export function placeMenu(x: number, y: number, w: number, h: number, vw: number, vh: number, m = 4): Placement {
+  const maxH = Math.max(40, vh - 2 * m), hh = Math.min(h, maxH);
+  let px = x, side: Placement["side"] = "right";
+  if (x + w + m > vw) { side = "left"; px = x - w >= m ? x - w : vw - m - w; }
+  let py = y;
+  if (y + hh + m > vh) py = y - hh >= m ? y - hh : vh - m - hh;
+  return { x: clamp(px, m, Math.max(m, vw - m - w)), y: clamp(py, m, Math.max(m, vh - m - hh)), maxH, side };
 }
+
+/** Place a w x h submenu next to its parent menu (rect `parent`) and the item that opened it (rect `item`).
+ *  Prefers the right side, flips to the left when it doesn't fit, aligns its first item with the parent item
+ *  and shifts up so the bottom fits; scrolls (maxH) when taller than the viewport. It overlaps the parent by
+ *  `overlap` px (inside the parent's padding, never over its items) so there is no hover gap. */
+export function placeSubmenu(parent: Rect, item: Rect, w: number, h: number, vw: number, vh: number, m = 4, overlap = 3, pad = 5): Placement {
+  const maxH = Math.max(40, vh - 2 * m), hh = Math.min(h, maxH);
+  const roomR = vw - m - (parent.right - overlap), roomL = parent.left + overlap - m;
+  const side: Placement["side"] = w <= roomR ? "right" : w <= roomL ? "left" : roomR >= roomL ? "right" : "left";
+  const x = side === "right" ? parent.right - overlap : parent.left + overlap - w;
+  const y = clamp(item.top - pad, m, Math.max(m, vh - m - hh));
+  return { x: clamp(x, m, Math.max(m, vw - m - w)), y, maxH, side };
+}
+
+/** Is p inside triangle abc (edges included)? */
+export function inTriangle(p: Pt, a: Pt, b: Pt, c: Pt): boolean {
+  const s = (p1: Pt, p2: Pt, p3: Pt) => (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+  const d1 = s(p, a, b), d2 = s(p, b, c), d3 = s(p, c, a);
+  return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+}
+/** Hover intent ("safe triangle"): is the pointer p, which was last over the submenu's parent item at `from`,
+ *  heading into the open submenu `sub` (on `side`)? Then crossing other items shouldn't switch menus. */
+export function aimingAt(from: Pt, p: Pt, sub: Rect, side: "right" | "left", tol = 6): boolean {
+  if (p.x >= sub.left && p.x <= sub.right && p.y >= sub.top && p.y <= sub.bottom) return true;
+  const nx = side === "right" ? sub.left : sub.right;
+  return inTriangle(p, from, { x: nx, y: sub.top - tol }, { x: nx, y: sub.bottom + tol });
+}
+
 /** Find an item (also inside submenus) by id. */
 export function findItem(items: MenuItem[], id: string): Entry | undefined {
   for (const m of items) { if (!isEntry(m)) continue; if (m.id === id) return m; const s = m.submenu && findItem(m.submenu, id); if (s) return s; }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { audioMenu, labelMenu, emptyMenu, nextEnabled, placeMenu, findItem, isBrowserShortcut, isEntry, type MenuItem } from "./contextMenu";
+import { audioMenu, labelMenu, emptyMenu, nextEnabled, placeMenu, placeSubmenu, inTriangle, aimingAt, findItem, isBrowserShortcut, isEntry, type MenuItem } from "./contextMenu";
 import { FX_NAMES } from "./fx";
 
 const ctx = { hasRange: false, hasClipboard: false, canJoin: false, canSplit: true, muted: false, solo: true, spectrogram: false, tracks: 1, trackName: "Mic" };
@@ -38,8 +38,50 @@ describe("context menus", () => {
     expect(nextEnabled([{ separator: true }, { id: "a", label: "a", disabled: true }], 0, 1)).toBe(-1);
   });
   it("menus stay on screen", () => {
-    expect(placeMenu(10, 10, 200, 300, 1000, 800)).toEqual({ x: 10, y: 10 });
-    expect(placeMenu(900, 700, 200, 300, 1000, 800)).toEqual({ x: 700, y: 496 });
+    expect(placeMenu(10, 10, 200, 300, 1000, 800)).toEqual({ x: 10, y: 10, maxH: 792, side: "right" });
+    // near the bottom-right corner: flips up and left at the pointer
+    expect(placeMenu(900, 700, 200, 300, 1000, 800)).toEqual({ x: 700, y: 400, maxH: 792, side: "left" });
+  });
+  it("keeps the main menu inside small windows", () => {
+    // 900x600 window, right-click near the bottom: opens upwards from the pointer
+    const p = placeMenu(225, 560, 240, 420, 900, 600);
+    expect(p.y).toBe(140); expect(p.y + 420).toBeLessThanOrEqual(596);
+    // not enough room above or below the pointer: pinned to the bottom edge, fully visible
+    const q = placeMenu(100, 300, 240, 420, 900, 600);
+    expect(q.y).toBe(176); expect(q.y + 420).toBe(596);
+    // taller than the window: top margin + max height (scrolls)
+    const r = placeMenu(100, 300, 240, 700, 900, 600);
+    expect(r).toMatchObject({ y: 4, maxH: 592 });
+    // wider than the room on both sides: clamped inside
+    expect(placeMenu(50, 10, 240, 100, 260, 600).x).toBe(16);
+  });
+  it("places submenus beside the parent, flipping and shifting up, never over the parent items", () => {
+    const parent = { left: 200, top: 150, right: 440, bottom: 596 }, item = { left: 205, top: 540, right: 435, bottom: 568 };
+    const s = placeSubmenu(parent, item, 230, 430, 900, 600);
+    expect(s.side).toBe("right"); expect(s.x).toBe(437); // 3px into the parent's 5px padding: no hover gap
+    expect(s.y + 430).toBe(596); // shifted up so the bottom fits
+    expect(s.x).toBeGreaterThan(parent.right - 5);
+    // no room on the right: flips left of the parent
+    const p2 = { left: 620, top: 150, right: 860, bottom: 596 };
+    const l = placeSubmenu(p2, { ...item, left: 625, right: 855 }, 230, 430, 900, 600);
+    expect(l.side).toBe("left"); expect(l.x + 230).toBe(623); expect(l.x + 230).toBeLessThan(p2.left + 5);
+    // aligned with the item when it fits
+    expect(placeSubmenu({ left: 10, top: 10, right: 250, bottom: 300 }, { left: 15, top: 100, right: 245, bottom: 128 }, 230, 200, 900, 600).y).toBe(95);
+    // taller than the window: scrolls
+    expect(placeSubmenu(parent, item, 230, 900, 900, 600)).toMatchObject({ y: 4, maxH: 592 });
+  });
+  it("hover intent: moving diagonally towards the submenu keeps it open", () => {
+    expect(inTriangle({ x: 1, y: 1 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 4 })).toBe(true);
+    expect(inTriangle({ x: 3, y: 3 }, { x: 0, y: 0 }, { x: 4, y: 0 }, { x: 0, y: 4 })).toBe(false);
+    const sub = { left: 437, top: 166, right: 667, bottom: 596 };
+    const from = { x: 380, y: 555 }; // over "Effects"
+    expect(aimingAt(from, { x: 400, y: 530 }, sub, "right")).toBe(true);  // up-right, over "Silence selection"
+    expect(aimingAt(from, { x: 410, y: 575 }, sub, "right")).toBe(true);  // down-right, over "Track"
+    expect(aimingAt(from, { x: 380, y: 520 }, sub, "right")).toBe(false); // straight up: switching items
+    expect(aimingAt(from, { x: 300, y: 560 }, sub, "right")).toBe(false); // moving away
+    expect(aimingAt(from, { x: 500, y: 300 }, sub, "right")).toBe(true);  // inside the submenu
+    const subL = { left: 390, top: 166, right: 620, bottom: 596 };
+    expect(aimingAt({ x: 700, y: 555 }, { x: 680, y: 530 }, subL, "left")).toBe(true);
   });
   it("swallows browser shortcuts but not app or text-editing keys", () => {
     const k = (key: string, o: Partial<KeyboardEvent> = {}) => isBrowserShortcut({ key, ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...o }, false);

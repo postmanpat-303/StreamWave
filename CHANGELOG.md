@@ -2,6 +2,17 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.8.2 (2026-10-18)
+### Fixed
+- **Right-click submenus (Effects, Track) could be impossible to reach** when the menu had to be moved to fit the window, such as when right-clicking near the bottom. Moving the mouse diagonally towards the submenu crossed another menu item and closed it. Menus now use hover intent (a "safe triangle"): while the pointer is heading for an open submenu, crossing other items doesn't close it. If the pointer stops on another item, that item takes over after a moment.
+- **Menu positioning was rewritten:**
+  - The main menu opens at the pointer and flips up or left when there's no room, so it stays fully inside the window.
+  - Submenus are placed beside their parent item. They flip to the left when there's no room on the right and shift up so their bottom fits. They never cover the parent menu's items, and they overlap only its padding, so there's no gap to fall into.
+  - A menu taller than the window gets a maximum height and scrolls.
+- A submenu now also opens on click and stays open until you hover or click another item.
+- The menu could close by itself straight after opening when right-clicking near the edge of a zoomed or scrollable timeline, because it closed on any scroll. It now closes only when you scroll with the wheel outside it, click elsewhere, press Esc, or the window loses focus or is resized.
+- Disabled menu items no longer swallow hover. Moving over them behaves like any other item.
+
 ## 0.8.1 (2026-10-18)
 ### Fixed
 - Right-clicking the waveform on Windows showed WebView2's browser menu ("Save image as", "Copy image"). The browser context menu is now switched off app-wide, except in text boxes, which keep Cut/Copy/Paste.
