@@ -103,6 +103,12 @@
   .coffee:hover { filter:brightness(1.08); }
   .paypal { font-size:13px; opacity:.8; text-decoration:underline; }
   .paypal:hover { opacity:1; }
+  .promo { padding-top:40px; }
+  .promo-link { display:block; max-width:860px; margin:0 auto; border-radius:18px; overflow:hidden; border:1px solid var(--line); box-shadow:0 20px 60px rgba(0,0,0,.5); transition:transform .2s, box-shadow .2s; }
+  .promo-link:hover { transform:translateY(-3px); box-shadow:0 24px 70px rgba(255,122,26,.35); }
+  .promo-link img { display:block; width:100%; height:auto; }
+  .promo-cap { text-align:center; color:var(--mut); margin-top:14px; }
+  .yt { font-size:13px; color:#ff4e45; }
   footer .wrap { align-items:center; display:flex; flex-wrap:wrap; gap:16px; justify-content:space-between; }
 </style>
 </head>
@@ -134,6 +140,15 @@
   </svg>
   <div class="bars" aria-hidden="true" id="bars"></div>
 </header>
+
+<section id="promo" class="promo"><div class="wrap">
+  <h2>Watch the promo</h2>
+  <p class="sub">A quick look at StreamWave in under a minute.</p>
+  <a class="promo-link" href="https://youtu.be/ZGsCz0rjXeg" rel="noopener" aria-label="Watch the StreamWave promo on YouTube">
+    <img src="promo-thumb.jpg" alt="StreamWave promo video: play button over a humpback whale and calf swimming through glowing orange sound rings" width="960" height="540" loading="lazy">
+  </a>
+  <p class="promo-cap"><a href="https://youtu.be/ZGsCz0rjXeg" rel="noopener">▶ Watch on YouTube</a> · more demos on <a href="https://www.youtube.com/@whatgoesaround1551" rel="noopener">Derek's channel</a></p>
+</div></section>
 
 <section id="features"><div class="wrap">
   <h2>Everything a creator needs. Nothing they don't.</h2>
@@ -225,6 +240,7 @@
   <div>© 2026 Derek Heasley · StreamWave · MIT licence · Bundles FFmpeg (LGPL)</div>
   <a class="coffee" href="https://buymeacoffee.com/postmanpat" rel="noopener">☕ Buy me a coffee</a>
   <a class="paypal" href="https://paypal.me/derekh100" rel="noopener">Donate via PayPal</a>
+  <a class="yt" href="https://www.youtube.com/@whatgoesaround1551" rel="noopener">▶ YouTube channel</a>
   <div><a href="https://github.com/postmanpat-303/StreamWave">GitHub</a> · <a href="https://github.com/postmanpat-303/StreamWave/releases">Releases</a> · <a href="https://github.com/postmanpat-303/StreamWave/issues">Issues</a></div>
 </div></footer>
 

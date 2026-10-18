@@ -2,6 +2,11 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.6.1 (2026-10-18)
+### Added
+- **▶ YouTube channel** button in About, next to Buy Me a Coffee and PayPal. It opens [Derek's channel](https://www.youtube.com/@whatgoesaround1551), with demos and promos for his apps. The URL is added to the app's link allowlist, which now has four exact URLs.
+- **Watch the promo:** a clickable promo thumbnail in the README and on the website, linking to https://youtu.be/ZGsCz0rjXeg, plus YouTube channel links next to the donation links.
+
 ## 0.6.0 (2026-10-17)
 ### Added
 - **In-app updates.** Use **Help → Check for updates…** or the button in About. StreamWave reads the latest GitHub release.

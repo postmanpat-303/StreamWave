@@ -9,6 +9,7 @@
   <img alt="Built with Tauri 2 and Rust" src="https://img.shields.io/badge/built%20with-Tauri%202%20%2B%20Rust-ffb347">
   <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-green"></a>
   <a href="https://buymeacoffee.com/postmanpat"><img alt="Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95%20buy%20me%20a%20coffee-postmanpat-ff7a1a"></a>
+  <a href="https://www.youtube.com/@whatgoesaround1551"><img alt="YouTube channel" src="https://img.shields.io/badge/YouTube-@whatgoesaround1551-ff0000?logo=youtube&logoColor=white"></a>
 </p>
 
 <p align="center">
@@ -27,6 +28,14 @@
 <p align="center">
   <a href="https://buymeacoffee.com/postmanpat"><img alt="☕ Buy me a coffee" src="https://img.shields.io/badge/%E2%98%95_Buy_me_a_coffee-postmanpat-ff7a1a?style=for-the-badge"></a>
   <a href="https://paypal.me/derekh100"><img alt="Donate via PayPal" src="https://img.shields.io/badge/Donate-PayPal-0070ba?style=flat-square&logo=paypal"></a>
+  <a href="https://www.youtube.com/@whatgoesaround1551"><img alt="YouTube channel" src="https://img.shields.io/badge/%E2%96%B6_YouTube-channel-ff0000?style=flat-square&logo=youtube&logoColor=white"></a>
+</p>
+
+## ▶ Watch the promo
+
+<p align="center">
+  <a href="https://youtu.be/ZGsCz0rjXeg"><img src="assets/promo-thumb.jpg" alt="StreamWave promo video on YouTube: play button over a humpback whale and calf swimming through glowing orange sound rings, with the StreamWave logo and 'FREE for Windows &amp; Linux'" width="720"></a><br>
+  <a href="https://youtu.be/ZGsCz0rjXeg"><b>▶ Watch the StreamWave promo on YouTube</b></a> · more demos on <a href="https://www.youtube.com/@whatgoesaround1551">Derek's YouTube channel</a>
 </p>
 
 ---
@@ -144,7 +153,7 @@ Yes, MIT-licensed, no accounts, no telemetry, everything runs locally.
 
 ## ☕ Support
 
-StreamWave is free and built in spare time by **Derek Heasley**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
+StreamWave is free and built in spare time by **Derek Heasley**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Demos and promos for my apps are on [YouTube](https://www.youtube.com/@whatgoesaround1551). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
 
 ## 📄 Licence
 
