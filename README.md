@@ -31,11 +31,15 @@
   <a href="https://www.youtube.com/@whatgoesaround1551"><img alt="YouTube channel" src="https://img.shields.io/badge/%E2%96%B6_YouTube-channel-ff0000?style=flat-square&logo=youtube&logoColor=white"></a>
 </p>
 
+<p align="center">
+  <a href="assets/screenshots/01-main.png"><img src="assets/screenshots/01-main.png" alt="StreamWave main window: the big record button with live input meters, a podcast episode with Host mic, Guest (Discord) and Music bed tracks, chapter markers, a Show notes label track, and the Studio Sound, effects and OBS panels on the right" width="100%"></a>
+</p>
+
 ## ▶ Watch the promo
 
 <p align="center">
   <a href="https://youtu.be/ZGsCz0rjXeg"><img src="assets/promo-thumb.jpg" alt="StreamWave promo video on YouTube: play button over a humpback whale and calf swimming through glowing orange sound rings, with the StreamWave logo and 'FREE for Windows &amp; Linux'" width="720"></a><br>
-  <a href="https://youtu.be/ZGsCz0rjXeg"><b>▶ Watch the StreamWave promo on YouTube</b></a> · more demos on <a href="https://www.youtube.com/@whatgoesaround1551">Derek's YouTube channel</a>
+  <a href="https://youtu.be/ZGsCz0rjXeg"><b>▶ Watch the StreamWave promo on YouTube</b></a> · more demos on <a href="https://www.youtube.com/@whatgoesaround1551">Del's YouTube channel</a>
 </p>
 
 ---
@@ -62,19 +66,22 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 
 ## 📸 Screenshots
 
-*Rendered from the actual StreamWave UI with a demo project.*
+*Real screenshots of StreamWave 0.8.3 on Linux, using a demo episode with self-generated voice and music. Click any image for full size.*
 
-**The main window** — recording while OBS records the stream. The OBS take comes back as separate mic / desktop / Discord tracks, scene changes land as markers, and the armed **30 s pre-record buffer** means you can hit *Save last 30 s* when you said something great before pressing record.
-
-![StreamWave main window while recording: live meters, pre-record buffer armed, three imported OBS tracks with waveforms, scene markers and an active selection](assets/screenshot-main.png)
-
-**✨ Studio Sound** — one click analyses the voice (noise floor, sibilance, plosives, room echo, loudness) and builds a fully editable chain: learned noise reduction, voice-curve EQ, de-esser, compressor and peak-safe **-16 LUFS** loudness. Tap A/B to compare before and after — live, while it plays.
-
-![Studio Sound after its analysis, with the editable effect chain it built: noise reduction, equalizer, de-esser, compressor, loudness and limiter](assets/screenshot-studio.png)
-
-**OBS sync** — locked to OBS over obs-websocket: record / pause / stop together, auto-import each audio track the moment OBS stops, and **Send back to video** drops your cleaned-up audio into a copy of the video without re-encoding the picture.
-
-![OBS panel while connected and recording in sync, with Follow OBS and auto-import enabled](assets/screenshot-obs.png)
+<table>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/02-context-menu.png"><img src="assets/screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound" width="100%"></a><br><b>Right-click anything.</b> Cut, split, label or apply an effect straight to the selection.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/03-spectrogram.png"><img src="assets/screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view, zoomed in, showing speech harmonics and a low hum band, with chapter markers above" width="100%"></a><br><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/04-effects.png"><img src="assets/screenshots/04-effects.png" alt="Effects panel for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup sliders), Loudness and Limiter" width="100%"></a><br><b>Live effects chain.</b> One-click presets build an editable chain that you hear instantly while it plays.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/05-aup3-import.png"><img src="assets/screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed" width="100%"></a><br><b>Bring your Audacity projects.</b> <code>.aup3</code> tracks and labels come across; your original file is only read.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/06-export.png"><img src="assets/screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="100%"></a><br><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/07-about.png"><img src="assets/screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.3, created by Del (postmanpat), a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="100%"></a><br><b>Free and open source.</b> Made by Del (postmanpat). If it saves you time, <a href="https://buymeacoffee.com/postmanpat">buy me a coffee</a> ☕</td>
+</tr>
+</table>
 
 ## ⬇ Install
 
@@ -132,6 +139,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [x] In-app update check (0.6.0)
 - [x] Audacity 3 (`.aup3`) project import (0.7.0)
 - [x] Spectrogram view, multi-track selection, label tracks, split / join clips (0.8.0)
+- [x] Right-click menu with effects on a selection; browser menu and shortcuts switched off (0.8.1)
 - [ ] Code-signed Windows installer, notarised macOS build, Flatpak
 
 Ideas welcome; please open an issue.
@@ -167,11 +175,11 @@ Yes, MIT-licensed, no accounts, no telemetry, everything runs locally.
 
 ## ☕ Support
 
-StreamWave is free and built in spare time by **Derek Heasley**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Demos and promos for my apps are on [YouTube](https://www.youtube.com/@whatgoesaround1551). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
+StreamWave is free and built in spare time by **Del (postmanpat)**. If it saves you time on stream, you can [**buy me a coffee**](https://buymeacoffee.com/postmanpat) (or [donate via PayPal](https://paypal.me/derekh100)). Demos and promos for my apps are on [YouTube](https://www.youtube.com/@whatgoesaround1551). Thank you! Bug reports and ideas in [Issues](https://github.com/postmanpat-303/StreamWave/issues) help just as much.
 
 ## 📄 Licence
 
-StreamWave is © 2026 Derek Heasley and released under the [MIT Licence](LICENSE).
+StreamWave is © 2026 Del (postmanpat) and released under the [MIT Licence](LICENSE).
 
 The Windows installer bundles **FFmpeg** (`ffmpeg.exe`, `ffprobe.exe`), an LGPL build from [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds), as separate, unmodified programs. FFmpeg is licensed under the **GNU LGPL** (not MIT). Its licence text and source links are installed in the `licenses` folder next to StreamWave, and you can replace those binaries with any other FFmpeg build. FFmpeg is a trademark of Fabrice Bellard. RNNoise (via `nnnoiseless`) is BSD-3-Clause; other Rust/npm dependencies keep their own permissive licences.
 

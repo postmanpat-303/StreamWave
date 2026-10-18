@@ -2,10 +2,10 @@
   import { renderSpec, freqTicks, type Spec } from "./spectrogram";
   import type { SpecColors, SpecScale } from "./editModel";
   type Phase = "down" | "move";
-  let { peaks, duration, selection = null, progress = 0, color = "#19d3b0", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic", onselect, onpickclip }:
+  let { peaks, duration, selection = null, progress = 0, color = "#19d3b0", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic", onselect, onpickclip, oncontext }:
     { peaks: number[]; duration: number; selection?: { a: number; b: number } | null; progress?: number; color?: string; active?: boolean; markers?: { id: number; time: number; label: string }[];
       bounds?: { t: number; split: boolean }[]; spec?: Spec | null; specScale?: SpecScale; specColors?: SpecColors;
-      onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onpickclip?: (t: number) => void } = $props();
+      onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onpickclip?: (t: number) => void; oncontext?: (t: number, e: MouseEvent) => void } = $props();
   let canvas: HTMLCanvasElement;
   let w = $state(800), h = $state(90);
   let anchor = 0, dragging = false;
@@ -67,7 +67,8 @@
 </script>
 <div class="wrap" class:active class:spec={!!spec} bind:clientWidth={w} bind:clientHeight={h}>
   <canvas bind:this={canvas} style="width:{w}px;height:{h}px" onpointerdown={down} onpointermove={move} onpointerup={up}
-    ondblclick={(e) => onpickclip?.(timeAt(e))}></canvas>
+    ondblclick={(e) => onpickclip?.(timeAt(e))}
+    oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); oncontext?.(timeAt(e), e); }}></canvas>
   {#each ticks as t (t.label)}<div class="tick" style="top:{t.y}px">{t.label}</div>{/each}
   {#each markers.filter((m) => m.time <= duration) as m (m.id)}
     <div class="mk" style="left:{pct(m.time)}%" title={m.label}><span>{m.label}</span></div>

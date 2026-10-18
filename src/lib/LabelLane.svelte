@@ -1,9 +1,10 @@
 <script lang="ts">
   import type { Label } from "./editModel";
   type Phase = "down" | "move";
-  let { labels, duration, selection = null, active = false, focusId = null, onselect, onedit, ondelete, onpick }:
+  let { labels, duration, selection = null, active = false, focusId = null, onselect, onedit, ondelete, onpick, oncontext }:
     { labels: Label[]; duration: number; selection?: { a: number; b: number } | null; active?: boolean; focusId?: number | null;
-      onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onedit: (id: number, text: string) => void; ondelete: (id: number) => void; onpick: (l: Label) => void } = $props();
+      onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onedit: (id: number, text: string) => void; ondelete: (id: number) => void; onpick: (l: Label) => void;
+      oncontext?: (t: number, e: MouseEvent, label: Label | null) => void } = $props();
   let lane: HTMLDivElement;
   let anchor = 0, dragging = false;
   const pct = (t: number) => (duration > 0 ? (t / duration) * 100 : 0);
@@ -17,7 +18,14 @@
   }
   function move(e: PointerEvent) { if (dragging) { const t = timeAt(e); onselect(Math.min(anchor, t), Math.max(anchor, t), e, "move"); } }
   function up(e: PointerEvent) { dragging = false; lane.releasePointerCapture?.(e.pointerId); }
-  function focusIf(el: HTMLInputElement, id: number) { if (id === focusId) queueMicrotask(() => { el.focus(); el.select(); }); }
+  $effect(() => {
+    const id = focusId; if (id == null || !lane) return;
+    queueMicrotask(() => { const el = lane.querySelector<HTMLInputElement>(`input[data-lid="${id}"]`); el?.focus(); el?.select(); });
+  });
+  function ctx(e: MouseEvent, l: Label | null) {
+    if (e.target instanceof HTMLInputElement) return; // text box: keep the normal copy/paste menu
+    e.preventDefault(); e.stopPropagation(); oncontext?.(timeAt(e), e, l);
+  }
   function key(e: KeyboardEvent, l: Label) {
     if (e.key === "Enter" || e.key === "Escape") { (e.target as HTMLInputElement).blur(); e.preventDefault(); }
     if (e.key === "Backspace" && (e.target as HTMLInputElement).value === "" && l.text === "") { e.preventDefault(); ondelete(l.id); }
@@ -25,12 +33,12 @@
   }
 </script>
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="lane" class:active bind:this={lane} onpointerdown={down} onpointermove={move} onpointerup={up}>
+<div class="lane" class:active bind:this={lane} onpointerdown={down} onpointermove={move} onpointerup={up} oncontextmenu={(e) => ctx(e, null)}>
   {#each labels as l, i (l.id)}
     {#if l.t1 - l.t0 > 0.0005}<div class="range" style="left:{pct(l.t0)}%;width:{pct(l.t1 - l.t0)}%"></div>{/if}
-    <div class="lab" style="left:{pct(l.t0)}%;top:{4 + (i % 2) * 24}px">
+    <div class="lab" style="left:{pct(l.t0)}%;top:{4 + (i % 2) * 24}px" role="group" aria-label="Label {l.text}" oncontextmenu={(e) => ctx(e, l)}>
       <button class="pin" title="Select this label's {l.t1 - l.t0 > 0.0005 ? 'range' : 'position'}" onclick={() => onpick(l)}>▾</button>
-      <input value={l.text} placeholder="label" size={Math.max(4, Math.min(30, l.text.length + 1))} use:focusIf={l.id}
+      <input value={l.text} placeholder="label" size={Math.max(4, Math.min(30, l.text.length + 1))} data-lid={l.id}
         onkeydown={(e) => key(e, l)} onchange={(e) => onedit(l.id, (e.target as HTMLInputElement).value)} />
       <button class="del" title="Delete label" onclick={() => ondelete(l.id)}>✕</button>
     </div>

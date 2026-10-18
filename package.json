@@ -1,7 +1,7 @@
 {
   "name": "streamwave",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.8.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -28,6 +28,7 @@
     "vite": "^6",
     "vitest": "^3.2.7"
   },
+  "author": "Del (postmanpat)",
   "license": "MIT",
   "repository": {
     "type": "git",

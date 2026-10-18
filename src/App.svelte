@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { open, save, ask } from "@tauri-apps/plugin-dialog";
   import { readText } from "@tauri-apps/plugin-clipboard-manager";
@@ -14,6 +14,10 @@
   import logoUrl from "./assets/logo.png";
   import WaveCanvas from "./lib/WaveCanvas.svelte";
   import LabelLane from "./lib/LabelLane.svelte";
+  import ContextMenu from "./lib/ContextMenu.svelte";
+  import EffectDialog from "./lib/EffectDialog.svelte";
+  import { audioMenu, labelMenu, emptyMenu, isBrowserShortcut, type MenuItem } from "./lib/contextMenu";
+  import { defaultFx, FX_NAMES, type Effect, type EffectType } from "./lib/fx";
   import { parseSpec, type Spec } from "./lib/spectrogram";
   import ObsPanel from "./lib/ObsPanel.svelte";
   import FxPanel from "./lib/FxPanel.svelte";
@@ -227,6 +231,123 @@
       }).catch((e) => toast(`Spectrogram failed: ${e}`, "err"));
     }
   });
+
+  // ---- right-click menus ----
+  let ctxMenu = $state<{ items: MenuItem[]; x: number; y: number; run: (id: string) => void } | null>(null);
+  let renaming = $state<number | null>(null);
+  let fxDialog = $state<{ fx: Effect; scope: string } | null>(null);
+  let renderBusy = $state(false);
+  const mediaDir = () => (projectPath ? projectPath.replace(/\.twt$/i, "") + " media" : null);
+  /** Right-click outside the current selection first moves the cursor there (like a click). */
+  function selectForContext(t: E.EditTrack, at: number) {
+    const s = selection, inRange = !!s && isSel(t.id) && (hasRange() ? at >= s.a - 1e-3 && at <= s.b + 1e-3 : Math.abs(at - s.a) < 1e-3);
+    if (!inRange) selection = { trackId: t.id, a: at, b: at };
+    else if (selection && selection.trackId !== t.id) selection = { ...selection, trackId: t.id };
+  }
+  function openAudioMenu(t: E.EditTrack, at: number, e: MouseEvent) {
+    selectForContext(t, at);
+    const sel = selection!, ids = selIds();
+    const next = E.splitClips(hist.present, sel);
+    const canSplit = next.tracks.some((x, i) => x !== hist.present.tracks[i]);
+    const canJoin = hasRange() && project.tracks.some((x) => ids.includes(x.id) && E.clipBounds(x).some((b) => b.split && b.t > sel.a + 1e-9 && b.t < sel.b - 1e-9));
+    const items = audioMenu({ hasRange: hasRange(), hasClipboard: clipboard.length > 0, canJoin, canSplit, muted: !!t.muted, solo: !!t.solo,
+      spectrogram: t.view === "spectrogram", tracks: ids.length, trackName: t.name });
+    ctxMenu = { items, x: e.clientX, y: e.clientY, run: (id) => audioAction(t, at, id) };
+  }
+  function openTrackHeaderMenu(t: E.EditTrack, e: MouseEvent) {
+    if (!isSel(t.id)) selection = { trackId: t.id, a: selection?.a ?? 0, b: selection?.b ?? 0 };
+    if (E.isLabelTrack(t)) { openLabelMenu(t, selection?.a ?? 0, e, null); return; }
+    const items = audioMenu({ hasRange: false, hasClipboard: false, canJoin: false, canSplit: false, muted: !!t.muted, solo: !!t.solo, spectrogram: t.view === "spectrogram", tracks: 1, trackName: t.name });
+    const tr = items.find((m) => "id" in m && m.id === "track") as { submenu: MenuItem[] };
+    ctxMenu = { items: tr.submenu, x: e.clientX, y: e.clientY, run: (id) => audioAction(t, selection?.a ?? 0, id) };
+  }
+  function openLabelMenu(t: E.EditTrack, at: number, e: MouseEvent, l: E.Label | null) {
+    if (l) selection = { trackId: t.id, a: l.t0, b: l.t1 }; else selectForContext(t, at);
+    ctxMenu = { items: labelMenu({ onLabel: !!l, hasRange: hasRange(), trackName: t.name }), x: e.clientX, y: e.clientY, run: async (id) => {
+      if (id === "editlabel" && l) { focusLabel = null; await tick(); focusLabel = l.id; }
+      else if (id === "selectlabel" && l) selection = { trackId: t.id, a: l.t0, b: l.t1 };
+      else if (id === "deletelabel" && l) commit("Delete label", E.setLabels(hist.present, t.id, (ls) => ls.filter((x) => x.id !== l.id)));
+      else if (id === "rename") renaming = t.id;
+      else if (id === "deletetrack") removeTrack(t.id);
+      else run(id as Action);
+    } };
+  }
+  function openEmptyMenu(e: MouseEvent) {
+    if ((e.target as Element).closest(".track")) return;
+    e.preventDefault();
+    ctxMenu = { items: emptyMenu({ hasClipboard: clipboard.length > 0 }), x: e.clientX, y: e.clientY, run: (id) => { if (id === "paste") selection = null; run(id as Action); } };
+  }
+  async function audioAction(t: E.EditTrack, at: number, id: string) {
+    const sel = selection;
+    if (id.startsWith("fx:")) { openFxDialog(id.slice(3) as EffectType, t); return; }
+    switch (id) {
+      case "marker": addMarker(undefined, sel?.a ?? at); break;
+      case "selectclip": pickClip(t, at); break;
+      case "trim": if (sel && hasRange()) { commit("Trim to selection", E.trimMany(hist.present, sel)); selection = { ...sel, a: 0, b: sel.b - sel.a }; } break;
+      case "silence": await applyRendered(null, "Silence", true); break;
+      case "fadein": case "fadeout": {
+        ctxFade = id === "fadein" ? "in" : "out"; const r = fxRange(t); const ms = Math.round((r.b - r.a) * 1000);
+        if (!hasRange()) selection = { trackId: t.id, a: r.a, b: r.b };
+        await applyRendered({ type: "Fade", in_ms: id === "fadein" ? ms : 0, out_ms: id === "fadeout" ? ms : 0 }, id === "fadein" ? "Fade in" : "Fade out");
+        break;
+      }
+      case "normalize": await applyRendered({ type: "Normalize", peak_db: -1 }, "Normalize"); break;
+      case "studio": selection = { trackId: t.id, a: sel?.a ?? 0, b: sel?.b ?? 0 }; await studioSound("Medium"); break;
+      case "rename": renaming = t.id; break;
+      case "mute": toggleTrackFlag(t.id, "muted"); break;
+      case "solo": toggleTrackFlag(t.id, "solo"); break;
+      case "toggleview": setView(t.id, { view: t.view === "spectrogram" ? "wave" : "spectrogram" }, t.view === "spectrogram" ? "Waveform view" : "Spectrogram view"); break;
+      case "deletetrack": removeTrack(t.id); break;
+      default: await run(id as Action);
+    }
+  }
+  /** Range used by fades without a selection: the first / last second of the track. */
+  function fxRange(t: E.EditTrack) {
+    if (selection && hasRange()) return { a: selection.a, b: selection.b };
+    const len = E.trackLen(t), d = Math.min(1, len);
+    return ctxFade === "out" ? { a: len - d, b: len } : { a: 0, b: d };
+  }
+  let ctxFade: "in" | "out" = "in";
+  function scopeText() {
+    const ids = selIds().filter((id) => !E.isLabelTrack(project.tracks.find((t) => t.id === id)!));
+    const n = ids.length, tr = n > 1 ? ` on ${n} tracks` : "";
+    return hasRange() ? `the selection ${fmtTime(selection!.a)}–${fmtTime(selection!.b)}${tr}` : `the whole track${n > 1 ? "s" : ""}${tr}`;
+  }
+  function openFxDialog(type: EffectType, t: E.EditTrack) {
+    let fx = defaultFx(type);
+    if (fx.type === "NoiseReduction") { const s = t.fx?.find((x) => x.fx.type === "NoiseReduction"); if (s && s.fx.type === "NoiseReduction") fx = { ...fx, profile: s.fx.profile }; }
+    fxDialog = { fx, scope: scopeText() };
+  }
+  /**
+   * Render the selection (or the whole track when there is no range) of every selected audio track
+   * through one effect, or as silence, into new files, and swap them in as one undoable edit.
+   */
+  async function applyRendered(fx: Effect | null, label: string, silence = false) {
+    const sel = selection; if (!sel || renderBusy) return false;
+    const ts = project.tracks.filter((t) => isSel(t.id) && !E.isLabelTrack(t) && t.clips.length);
+    if (!ts.length) { toast("Select some audio first", "warn"); return false; }
+    renderBusy = true; toast(`${label}…`);
+    try {
+      let p = hist.present; const m = new Map(sources);
+      for (const t of ts) {
+        const [a, b] = hasRange() ? [sel.a, sel.b] : [0, E.trackLen(t)];
+        const clips = E.extract(t, a, Math.min(b, E.trackLen(t))); if (!clips.length) continue;
+        const path = await api.renderSelection(clips, fx ? [{ bypass: false, fx }] : [], silence, `${t.name} - ${label}`, mediaDir());
+        const w = await api.importAudio(path);
+        m.set(w.path, { path: w.path, name: w.name, duration: w.duration_secs, sampleRate: w.sample_rate, channels: w.channels, peaks: w.peaks });
+        p = E.replaceRanges(p, a, Math.min(b, E.trackLen(t)), new Map([[t.id, [{ src: w.path, start: 0, end: w.duration_secs }]]]));
+      }
+      sources = m; commit(ts.length > 1 ? `${label} (${ts.length} tracks)` : label, p); restartIfPlaying();
+      toast(`${label} applied${hasRange() ? " to the selection" : ""}. Ctrl+Z undoes it.`);
+      return true;
+    } catch (e) { toast(`${label} failed: ${e}`, "err"); return false; }
+    finally { renderBusy = false; }
+  }
+  function renameTrack(id: number, name: string) {
+    renaming = null; name = name.trim();
+    const t = project.tracks.find((x) => x.id === id); if (!t || !name || name === t.name) return;
+    commit("Rename track", { ...hist.present, tracks: hist.present.tracks.map((x) => (x.id === id ? { ...x, name } : x)) });
+  }
 
   function removeTrack(id: number) { commit("Remove track", { ...hist.present, tracks: hist.present.tracks.filter((t) => t.id !== id) }); }
 
@@ -531,6 +652,8 @@
     return null;
   }
   function onKey(e: KeyboardEvent) {
+    // reload / print / find / page zoom etc. make no sense in an app window (app hotkeys still run below)
+    if (isBrowserShortcut(e, import.meta.env.DEV)) e.preventDefault();
     const a = keyAction(e); if (!a) return;
     recent[a] = performance.now();
     if (isTextField(document.activeElement)) return; // let the browser do its thing
@@ -624,10 +747,23 @@
       else if (e.payload.type === "drop") { dropHover = false; openDropped(e.payload.paths); }
     }).catch(() => () => {}));
     window.addEventListener("keydown", onKey);
+    // no browser context menu ("Save image as…") except in text boxes, where copy/paste of text is useful
+    const noCtx = (e: MouseEvent) => { if (!isTextField(e.target as Element)) e.preventDefault(); };
+    const noZoom = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); };
+    window.addEventListener("contextmenu", noCtx);
+    window.addEventListener("wheel", noZoom, { passive: false });
+    uns.push(Promise.resolve(() => { window.removeEventListener("contextmenu", noCtx); window.removeEventListener("wheel", noZoom); }));
     return () => { uns.forEach((u) => u.then((f) => f())); window.removeEventListener("keydown", onKey); clearInterval(autosave); window.removeEventListener("beforeunload", beforeUnload); };
   });
 </script>
 
+{#if ctxMenu}<ContextMenu items={ctxMenu.items} x={ctxMenu.x} y={ctxMenu.y} onpick={(id) => ctxMenu?.run(id)} onclose={() => (ctxMenu = null)} />{/if}
+{#if fxDialog}
+  <EffectDialog fx={fxDialog.fx} scope={fxDialog.scope} busy={renderBusy}
+    onapply={async (fx) => { if (await applyRendered(fx, FX_NAMES[fx.type])) fxDialog = null; }}
+    onaddchain={(fx) => { const t = activeTrack(); if (t) { changeFx([...(t.fx ?? []), slot(fx)], `Add ${FX_NAMES[fx.type]}`); toast(`${FX_NAMES[fx.type]} added to ${t.name}'s effects`); } fxDialog = null; }}
+    onclose={() => (fxDialog = null)} />
+{/if}
 {#if dropHover}<div class="drophint">Drop audio, video, an Audacity project (.aup3) or a StreamWave project (.twt)</div>{/if}
 {#if aupBusy}<div class="aupbusy panel">Importing Audacity project "{aupBusy.name}"… {Math.round(aupBusy.frac * 100)}%<div class="bar"><div style="width:{aupBusy.frac * 100}%"></div></div><div class="small">Your .aup3 file is only read, never changed.</div></div>{/if}
 {#if importReport}
@@ -689,7 +825,7 @@
         </div>
       </div>
 
-      <div class="tracks" onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } }}>
+      <div class="tracks" role="region" aria-label="Tracks" oncontextmenu={openEmptyMenu} onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } }}>
         {#if project.tracks.length === 0}
           <div class="empty">No tracks yet. Hit the big red button, import a file, or record in OBS.</div>
         {/if}
@@ -697,12 +833,21 @@
           {@const len = E.trackLen(t)}
           {@const sel = isSel(t.id) ? selection : null}
           {@const lab = E.isLabelTrack(t)}
+          {@const span = lab ? Math.max(len, timelineLen) : Math.max(len, timelineLen * 0.02)}
           <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
           <div class="track" class:act={selection?.trackId === t.id} class:multi={isSel(t.id) && selIds().length > 1} data-tid={t.id}>
-            <div class="thead">
+            <div class="thead" role="toolbar" tabindex="-1" aria-label="{t.name} track" oncontextmenu={(e) => { if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return; e.preventDefault(); e.stopPropagation(); openTrackHeaderMenu(t, e); }}>
               {#if !lab}<button class="play" onclick={() => togglePlay(t)}>{playingId === t.id && level.playing && !level.play_paused ? "❚❚" : "▶"}</button>{/if}
               {#if playingId === t.id && level.playing}<button class="play" title="Stop" onclick={() => run("stop")}>■</button>{/if}
-              <div class="tname" title={t.clips.map((c) => c.src).join("\n")}>{t.name}</div>
+              {#if renaming === t.id}
+                <!-- svelte-ignore a11y_autofocus -->
+                <input class="rename" value={t.name} autofocus aria-label="Track name" onfocus={(e) => e.currentTarget.select()}
+                  onkeydown={(e) => { e.stopPropagation(); if (e.key === "Enter") renameTrack(t.id, e.currentTarget.value); if (e.key === "Escape") renaming = null; }}
+                  onblur={(e) => renameTrack(t.id, e.currentTarget.value)} />
+              {:else}
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div class="tname" title={t.clips.map((c) => c.src).join("\n")} ondblclick={() => (renaming = t.id)}>{t.name}</div>
+              {/if}
               <span class="tag {t.kind}">{t.kind}</span>
               {#if t.muted}<button class="tag flag" title="Muted in Audacity (left out of Send Back to Video). Click to unmute." onclick={() => toggleTrackFlag(t.id, "muted")}>muted</button>{/if}
               {#if t.solo}<button class="tag flag" title="Solo in Audacity. Click to clear." onclick={() => toggleTrackFlag(t.id, "solo")}>solo</button>{/if}
@@ -724,18 +869,19 @@
               {/if}
               <button class="x" onclick={() => removeTrack(t.id)} title="Remove from project (file is kept)">✕</button>
             </div>
-            <div class="scroll" onscroll={syncScroll}><div style="width:{zoom * 100 * Math.max(len, timelineLen * 0.02) / timelineLen}%">
+            <div class="scroll" onscroll={syncScroll}><div style="width:{zoom * 100 * span / timelineLen}%">
             {#if lab}
-              <LabelLane labels={t.labels ?? []} duration={Math.max(len, timelineLen * 0.02)} active={selection?.trackId === t.id} selection={sel} focusId={focusLabel}
+              <LabelLane labels={t.labels ?? []} duration={span} active={selection?.trackId === t.id} selection={sel} focusId={focusLabel}
                 onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)}
                 onedit={(id, text) => commit("Edit label", E.setLabels(hist.present, t.id, (ls) => ls.map((l) => (l.id === id ? { ...l, text } : l))))}
                 ondelete={(id) => commit("Delete label", E.setLabels(hist.present, t.id, (ls) => ls.filter((l) => l.id !== id)))}
-                onpick={(l) => (selection = { trackId: t.id, a: l.t0, b: l.t1 })} />
+                onpick={(l) => (selection = { trackId: t.id, a: l.t0, b: l.t1 })}
+                oncontext={(at, e, l) => openLabelMenu(t, at, e, l)} />
             {:else}
             <WaveCanvas peaks={E.trackPeaks(t, sources, Math.round(2000 * zoom))} duration={len} active={selection?.trackId === t.id}
               selection={sel} progress={progressFor(t)} markers={project.markers ?? []} bounds={E.clipBounds(t)}
               spec={t.view === "spectrogram" ? specs.get(t.id)?.spec ?? null : null} specScale={t.specScale ?? "log"} specColors={t.specColors ?? "classic"}
-              onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)} onpickclip={(at) => pickClip(t, at)}
+              onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)} onpickclip={(at) => pickClip(t, at)} oncontext={(at, e) => openAudioMenu(t, at, e)}
               color={t.kind === "obs" ? "#8b7bff" : t.kind === "recovered" ? "#ffb020" : "#19d3b0"} />
             {/if}
             </div></div>
@@ -830,7 +976,8 @@
   .tag { font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 10px; background: #19d3b022; color: var(--accent); }
   .track.multi { box-shadow: inset 3px 0 0 #4da3ff; }
   .vbtn { padding: 1px 7px; border-radius: 10px; background: #ffffff0d; border: 1px solid #ffffff1a; cursor: pointer; } .vbtn.on { border-color: #19d3b0; color: #19d3b0; }
-  .vsel { padding: 0 4px; height: 22px; width: auto !important; flex: none; min-width: 0; }
+  .rename { width: 180px; padding: 2px 6px; font-weight: 600; }
+  .vsel { padding: 0 20px 0 6px; background-position: right 6px center; height: 22px; width: auto !important; flex: none; min-width: 0; }
   .tag.labels { background: #ffb02022; color: #ffd27a; }
   .tag.audacity { background: #3d8bff22; color: #7fb2ff; }
   button.tag.flag { border: 1px solid #ffb02066; background: #ffb02014; color: var(--warn); cursor: pointer; padding: 0 6px; font-size: 11px; }
