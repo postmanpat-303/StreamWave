@@ -40,9 +40,17 @@ pub fn find_ffmpeg() -> Option<PathBuf> {
             }
         }
     }
-    // 2) PATH
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path).map(|d| d.join(exe)).find(|p| p.is_file())
+    // 2) PATH (plus Homebrew/MacPorts on macOS, where apps started from Finder get a minimal PATH)
+    tool_dirs().into_iter().map(|d| d.join(exe)).find(|p| p.is_file())
+}
+
+/// Directories searched for ffmpeg/ffprobe after the bundled sidecar.
+pub fn tool_dirs() -> Vec<PathBuf> {
+    let mut v: Vec<PathBuf> = std::env::var_os("PATH").map(|p| std::env::split_paths(&p).collect()).unwrap_or_default();
+    if cfg!(target_os = "macos") {
+        for d in ["/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin"] { let d = PathBuf::from(d); if !v.contains(&d) { v.push(d) } }
+    }
+    v
 }
 
 pub fn ffmpeg_info() -> FfmpegInfo {

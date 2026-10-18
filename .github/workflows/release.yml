@@ -3,12 +3,23 @@ name: Release
 # Manual only (Actions > Release > Run workflow), so it never overwrites hand-uploaded release assets.
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: "What to build"
+        type: choice
+        options: [all, macos]
+        default: all
+      mac_draft_tag:
+        description: "macOS: attach the Mac files to this DRAFT release (created as a draft if missing). Empty = workflow artifacts only. Published releases are never touched."
+        required: false
+        default: ""
 
 permissions:
   contents: write
 
 jobs:
   build:
+    if: inputs.platforms == 'all'
     strategy:
       fail-fast: false
       matrix:
@@ -72,3 +83,81 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+  # Universal (Apple Silicon + Intel) app, ad-hoc signed, not notarised. Only GitHub's macOS runners can build it.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - name: Tests
+        run: |
+          npm test
+          npm run check
+          cargo test --lib --manifest-path src-tauri/Cargo.toml
+      - name: Build and package (universal .app, dmg, zip, updater bundle)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: scripts/package-macos.sh
+      - name: Smoke test (dmg mounts, app is universal and signed, launches)
+        run: |
+          DMG=$(ls dist/*_universal.dmg)
+          MNT=$(mktemp -d)
+          for i in 1 2 3; do hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG" && break; sleep 5; done
+          test -L "$MNT/Applications"
+          lipo -archs "$MNT/StreamWave.app/Contents/MacOS/StreamWave"
+          codesign --verify --deep --strict "$MNT/StreamWave.app"
+          for i in 1 2 3; do hdiutil detach "$MNT" && break; sleep 5; done
+          APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/StreamWave.app
+          "$APP/Contents/MacOS/StreamWave" > "$RUNNER_TEMP/run.log" 2>&1 &
+          PID=$!; sleep 15
+          screencapture -x "$RUNNER_TEMP/macos-launch.png" || true
+          if kill -0 $PID; then echo "still running after 15 s"; kill $PID; else echo "app exited early"; cat "$RUNNER_TEMP/run.log"; exit 1; fi
+          cat "$RUNNER_TEMP/run.log"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StreamWave-macos-universal
+          path: |
+            dist/*
+            ${{ runner.temp }}/macos-launch.png
+      - name: Attach to a draft release
+        if: inputs.mac_draft_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.mac_draft_tag }}
+        run: |
+          VER=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          if gh release view "$TAG" --json isDraft --jq .isDraft > draft.txt 2>/dev/null; then
+            test "$(cat draft.txt)" = "true" || { echo "::error::$TAG is already published; refusing to change it"; exit 1; }
+          else
+            gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "StreamWave $VER (macOS draft)" --notes "Draft with the macOS build. Not published."
+          fi
+          cd dist
+          gh release upload "$TAG" --clobber StreamWave_${VER}_universal.dmg StreamWave_${VER}_universal.app.zip
+          if [ -f latest-darwin.json ]; then
+            gh release upload "$TAG" --clobber StreamWave_${VER}_universal.app.tar.gz StreamWave_${VER}_universal.app.tar.gz.sig
+            # merge into the draft's latest.json (or the same version's published one) so it lists all platforms
+            gh release download "$TAG" --pattern latest.json --clobber 2>/dev/null || gh release download "v$VER" --pattern latest.json --clobber 2>/dev/null || true
+            if [ -f latest.json ]; then node ../scripts/merge-latest-json.mjs latest.json latest-darwin.json > merged.json && mv merged.json latest.json; else cp latest-darwin.json latest.json; fi
+            gh release upload "$TAG" --clobber latest.json
+          fi
+          gh release download "$TAG" --pattern SHA256SUMS.txt --clobber 2>/dev/null || gh release download "v$VER" --pattern SHA256SUMS.txt --clobber 2>/dev/null || touch SHA256SUMS.txt
+          # replace the Mac lines (and latest.json's, only if we uploaded a new one); keep everything else
+          if [ -f latest-darwin.json ]; then DROP='_universal\.|  latest\.json$'; NEW="StreamWave_${VER}_universal.* latest.json"; else DROP='_universal\.'; NEW="StreamWave_${VER}_universal.*"; fi
+          grep -v -E "$DROP" SHA256SUMS.txt > sums.new || true
+          shasum -a 256 $NEW >> sums.new
+          sort -k2 -u sums.new > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          gh release upload "$TAG" --clobber SHA256SUMS.txt
