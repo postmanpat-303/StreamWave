@@ -72,7 +72,18 @@
           "/usr/bin/ffmpeg"
         ]
       }
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "twt"
+        ],
+        "name": "StreamWave Project",
+        "description": "StreamWave audio project",
+        "role": "Editor",
+        "mimeType": "application/x-streamwave-project"
+      }
+    ]
   },
   "mainBinaryName": "StreamWave",
   "plugins": {

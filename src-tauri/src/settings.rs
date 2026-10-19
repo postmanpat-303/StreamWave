@@ -5,6 +5,10 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum LatencyProfile { LowLatency, #[default] Balanced, Safe }
 
+/// Level-triggered ("voice activated") recording configuration.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct VoiceTrigger { pub threshold_db: f32, pub hold_ms: u64 }
+
 impl LatencyProfile {
     /// Buffer size in frames requested from the driver.
     pub fn frames(self) -> u32 { match self { Self::LowLatency => 128, Self::Balanced => 512, Self::Safe => 2048 } }
@@ -28,6 +32,12 @@ pub struct Settings {
     pub preroll_prepend: bool,
     pub recent_projects: Vec<String>,
     pub follow_obs: bool,
+    /// Also write a −12 dB safety copy of every recording (clipping rescue).
+    pub safety_track: bool,
+    /// Level-triggered auto record (None = off).
+    pub voice_trigger: Option<VoiceTrigger>,
+    /// Path to a whisper.cpp ggml model for transcription (None = look next to the exe).
+    pub whisper_model: Option<String>,
     /// first-run setup finished or skipped
     pub onboarded: bool,
     /// quiet update check at startup (at most once a day)
