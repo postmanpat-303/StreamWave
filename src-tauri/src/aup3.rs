@@ -79,7 +79,7 @@ pub fn decode_doc(data: &[u8]) -> Result<Elem> {
             1 => { let n = look(&names, r.u16()?)?; stack.push(Elem { name: n, ..Default::default() }); } // StartTag
             2 => {                                                        // EndTag
                 let n = look(&names, r.u16()?)?;
-                if stack.len() < 2 || stack.last().map(|e| e.name != n).unwrap_or(true) { bail!("project document is damaged (unbalanced <{n}>") }
+                if stack.len() < 2 || stack.last().map(|e| e.name != n).unwrap_or(true) { bail!("project document is damaged (unbalanced <{n}>)") }
                 let e = stack.pop().unwrap(); stack.last_mut().unwrap().children.push(e);
             }
             3 => { let k = look(&names, r.u16()?)?; let n = r.len()?; let s = decode_str(r.take(n)?, char_size); attr!(k, Val::Str(s)) } // String

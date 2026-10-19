@@ -13,6 +13,9 @@ All notable changes to StreamWave are documented here. The format is loosely bas
 - **Per-clip gain and fades**: select a range, set gain (dB) and fade in/out (ms) in the Selection panel; applied non-destructively to the clips and baked on export. Clips with different settings are kept split.
 - **Mixdown playback**: "▶ Mix all" renders every track with its effects and plays the combined mix.
 
+### Routing
+- **Virtual output hint**: when a virtual audio device (VB-CABLE, VoiceMeeter, loopback/Stereo Mix, BlackHole on Mac) is in the output list, Settings explains how to send StreamWave's sound into OBS, Discord or Zoom. The user guide has the setup steps.
+
 ### Export & projects
 - **Batch export**: "⇩⇩ Batch" exports every track as a 24-bit WAV into a chosen folder, appending/replacing a Loudness slot at the target chosen in Settings (−14 / −16 / −23 LUFS).
 - **`.twt` file association**: double-clicking a project file opens it in StreamWave (NSIS registers the association per-user).

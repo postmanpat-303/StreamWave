@@ -53,7 +53,7 @@
 
   const inputs = $derived(devices.filter((d) => d.is_input));
   const outputs = $derived(devices.filter((d) => !d.is_input));
-  const virtualOutputs = $derived(outputs.filter((d) => /cable|vb-audio|voicemeeter|loopback|stereo mix|virtual audio/i.test(d.friendly_name)));
+  const virtualOutputs = $derived(outputs.filter((d) => /cable|vb-audio|voicemeeter|loopback|stereo mix|virtual audio|blackhole/i.test(d.friendly_name)));
   const recording = $derived(level.recording);
 
   function toast(text: string, kind = "info") {

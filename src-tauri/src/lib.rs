@@ -302,7 +302,8 @@ fn twt_arg(args: &[String]) -> Option<String> {
     args.iter().skip(1).find(|a| a.to_lowercase().ends_with(".twt")).cloned()
 }
 
-fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
     let it = |id: &str, text: &str, acc: Option<&str>| MenuItem::with_id(app, id, text, true, acc);
     let file = Submenu::with_items(app, "File", true, &[
         &it("new", "New Project", Some("CmdOrCtrl+N"))?,

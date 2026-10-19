@@ -69,14 +69,14 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | 🌈 **Spectrogram view** | Switch any track between waveform and spectrogram, with a log or linear frequency scale and Classic, Inferno or Greyscale colours. Good for spotting hum, hiss and plosives. |
 | 🏷 **Label tracks** | **Ctrl+B** adds an editable text label at the cursor or selection. Export labels as Audacity-compatible text or turn them into markers/chapters. |
 | 🩺 **Live mic check** | Friendly warnings for clipping, too quiet, dead channel, DC offset and 50/60 Hz hum, before they ruin a recording. |
-| 🛡 **Safety track** | Every recording is also written as a −12 dB `*_safety.wav` copy in lock-step with the main file. Clipped a take? Boost the safety copy and rescue it. |
-| 🎙 **Voice-triggered recording** | Set a level threshold — StreamWave arms itself, starts recording when you speak and stops ~1.5 s after you stop. Perfect for long streams and unattended capture. |
-| ✂️ **Silence auto-trim** | One click finds dead air and filler pauses and marks them for removal; accept or reject each region, non-destructively. |
-| 🎚 **Per-clip gain & fades** | Every clip gets its own gain and fade in/out — duck music under a voiceover, smooth punch-ins, level a rant across takes. |
-| 📤 **Batch export** | Export every track to WAV/MP3/FLAC/Opus in one pass, each normalised to −14 / −16 / −23 LUFS. Naming and tags handled for you. |
-| ▶️ **Mixdown playback** | Hear the whole project — all tracks with their effects — exactly as it will export, right from the transport bar. |
-| 📝 **Whisper transcription** | Transcribe takes locally with any whisper.cpp ggml model — speech-to-text, per-clip, fully on-device. |
-| 🎧 **Virtual output guidance** | Setting up OBS or Discord routing on Windows? Built-in step-by-step guides for VB-Cable and the macOS BlackHole equivalent. |
+| 🛡 **Safety track** *(new in 0.9.0)* | Every recording is also written as a −12 dB `*_safety.wav` copy in lock-step with the main file. Clipped a take? Boost the safety copy and rescue it. |
+| 🎙 **Voice-triggered recording** *(new in 0.9.0)* | Set a level threshold and hold time: recording starts when you speak and stops about 1.5 s after you stop. Handy for long streams and hands-free capture. |
+| ✂️ **Silence auto-trim** *(new in 0.9.0)* | **✂ Silences** finds the pauses on a track (noise floor + 8 dB, at least 250 ms, with padding so word tails survive), shows how many it found, and **Trim N silences** cuts them in one undoable step. |
+| 🎚 **Per-clip gain & fades** *(new in 0.9.0)* | Give the selected clips their own gain and fade in/out, non-destructively: duck music under a voiceover, smooth punch-ins, level a rant across takes. |
+| 📤 **Batch export** *(new in 0.9.0)* | Export every track as a 24-bit WAV into one folder in a single pass, each brought to −14, −16 or −23 LUFS. |
+| ▶️ **Mixdown playback** *(new in 0.9.0)* | **▶ Mix all** plays every track together with its effects, so you can hear the whole project. Export is still one track at a time. |
+| 📝 **Whisper transcription** *(new in 0.9.0)* | Transcribe a track on your own computer with whisper.cpp and any ggml model (not bundled), then click a line to play from there. No cloud. |
+| 🎧 **Virtual output hint** *(new in 0.9.0)* | StreamWave recognises virtual audio devices (VB-CABLE, VoiceMeeter, BlackHole on Mac) in the output list and explains how to send its sound into OBS, Discord or Zoom. The user guide has the setup steps. |
 
 ## 📸 Screenshots
 
@@ -198,7 +198,7 @@ The Windows installer includes it. On Linux, install it from your distro. On Mac
 
 **Can StreamWave replace Audacity?**
 If you've used Audacity, you'll feel at home, with live effects, OBS sync and recordings that survive a crash.
-For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing (StreamWave shows a spectrogram but doesn't edit in it), macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave can select and edit several tracks together, but it plays and exports one track at a time rather than mixing a full multitrack session.
+For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing (StreamWave shows a spectrogram but doesn't edit in it), macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave can select and edit several tracks together and play them as a mix (0.9.0), but it exports one track at a time rather than mixing down a full multitrack session.
 You can bring existing work across: **File → Import Audacity Project…** (or drag an `.aup3` onto the window) reads Audacity 3 projects. Tracks, names, clip positions and trims, the audio itself (16-bit, 24-bit and 32-bit float), track gain, pan, mute and solo, clip envelopes and labels (as markers) come across. Audacity effects and note/time tracks are skipped, and StreamWave tells you exactly what it left out. Your `.aup3` file is opened read-only and never changed; the audio is copied into WAV files next to your StreamWave project (or into your recordings folder under *Audacity imports* if the project isn't saved yet).
 *Audacity® is a trademark of its respective owners. StreamWave is an independent project and isn't affiliated with or endorsed by Audacity or Muse Group. The importer was written from scratch and contains no Audacity code.*
 

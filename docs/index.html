@@ -57,6 +57,7 @@
   .card:hover { transform:translateY(-4px); border-color:var(--c2); box-shadow:0 10px 40px rgba(255,122,26,.18); }
   .card .ico { font-size:28px; width:52px; height:52px; display:grid; place-items:center; border-radius:14px; background:rgba(255,122,26,.14); margin-bottom:14px; }
   .card h3 { font-size:19px; margin-bottom:6px; }
+  .card h3 small { font-size:11px; font-weight:700; color:var(--c1); border:1px solid var(--line); border-radius:999px; padding:1px 8px; margin-left:6px; vertical-align:middle; white-space:nowrap; }
   .card p { color:var(--mut); font-size:15px; }
 
   .obs { background:linear-gradient(180deg,var(--bg),var(--bg2),var(--bg)); }
@@ -182,13 +183,13 @@
     <div class="card"><div class="ico">🤝</div><h3>Shared mic, always</h3><p>Never takes exclusive control of your microphone. OBS, Discord and your browser keep working alongside.</p></div>
     <div class="card"><div class="ico">🩺</div><h3>Live mic check</h3><p>Warnings for clipping, too quiet, a dead channel or mains hum, before they ruin a recording.</p></div>
     <div class="card"><div class="ico">✂️</div><h3>Non-destructive editing</h3><p>Cut, copy, paste with full undo. Originals never change. Projects autosave and recover after a crash.</p></div>
-    <div class="card"><div class="ico">🛡</div><h3>Safety track</h3><p>Every recording is also written as a −12 dB copy. Clipped a take? Boost the safety file and rescue it.</p></div>
-    <div class="card"><div class="ico">🎙</div><h3>Voice-triggered recording</h3><p>Set a level threshold: recording starts when you speak and stops shortly after you stop. Ideal for long streams.</p></div>
-    <div class="card"><div class="ico">🧹</div><h3>Silence auto-trim</h3><p>Find dead air and filler pauses in one click, then accept or reject each region — non-destructively.</p></div>
-    <div class="card"><div class="ico">🎚</div><h3>Per-clip gain & fades</h3><p>Every clip gets its own gain and fades. Duck music under a voiceover and smooth punch-ins.</p></div>
-    <div class="card"><div class="ico">📤</div><h3>Batch export</h3><p>Export every track in one pass, each normalised to −14, −16 or −23 LUFS. Naming and tags included.</p></div>
-    <div class="card"><div class="ico">▶️</div><h3>Mixdown playback</h3><p>Hear the whole project — every track with its effects — exactly as it will export, before you export.</p></div>
-    <div class="card"><div class="ico">📝</div><h3>Whisper transcription</h3><p>Transcribe takes locally with any whisper.cpp model. Speech-to-text on your machine, no cloud.</p></div>
+    <div class="card"><div class="ico">🛡</div><h3>Safety track <small>new in 0.9</small></h3><p>Every recording is also written as a −12 dB copy. Clipped a take? Boost the safety file and rescue it.</p></div>
+    <div class="card"><div class="ico">🎙</div><h3>Voice-triggered recording <small>new in 0.9</small></h3><p>Set a level threshold: recording starts when you speak and stops shortly after you stop. Ideal for long streams.</p></div>
+    <div class="card"><div class="ico">🧹</div><h3>Silence auto-trim <small>new in 0.9</small></h3><p>Find the pauses on a track in one click, see how many there are, and trim them all in one undoable step.</p></div>
+    <div class="card"><div class="ico">🎚</div><h3>Per-clip gain &amp; fades <small>new in 0.9</small></h3><p>Every clip gets its own gain and fades. Duck music under a voiceover and smooth punch-ins.</p></div>
+    <div class="card"><div class="ico">📤</div><h3>Batch export <small>new in 0.9</small></h3><p>Export every track as a 24-bit WAV in one pass, each brought to −14, −16 or −23 LUFS.</p></div>
+    <div class="card"><div class="ico">▶️</div><h3>Mixdown playback <small>new in 0.9</small></h3><p>Hear the whole project: every track played together with its effects.</p></div>
+    <div class="card"><div class="ico">📝</div><h3>Whisper transcription <small>new in 0.9</small></h3><p>Transcribe takes locally with any whisper.cpp model. Speech-to-text on your machine, no cloud.</p></div>
   </div>
 </div></section>
 
