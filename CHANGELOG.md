@@ -2,6 +2,30 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Recording
+- **Safety track** (Settings): every recording is also written as a `*_safety.wav` copy at −12 dB, in lock-step with the main file (same pre-roll, rollover and crash recovery). Rescue clipped takes by boosting the safety copy.
+- **Voice trigger** (Settings): level-activated recording. Starts when the input stays above a threshold (dB) for a hold time (ms), stops ~1.5 s after it drops back below. Indicator shown next to the record button.
+
+### Editing
+- **Silence auto-trim**: "✂ Silences" on a track scans for pauses (auto threshold = noise floor + 8 dB, 250 ms minimum, 80 ms padding, with a dynamic-range guard), then "Trim N silences" cuts them in one undoable step.
+- **Per-clip gain and fades**: select a range, set gain (dB) and fade in/out (ms) in the Selection panel; applied non-destructively to the clips and baked on export. Clips with different settings are kept split.
+- **Mixdown playback**: "▶ Mix all" renders every track with its effects and plays the combined mix.
+
+### Export & projects
+- **Batch export**: "⇩⇩ Batch" exports every track as a 24-bit WAV into a chosen folder, appending/replacing a Loudness slot at the target chosen in Settings (−14 / −16 / −23 LUFS).
+- **`.twt` file association**: double-clicking a project file opens it in StreamWave (NSIS registers the association per-user).
+
+### AI / transcription
+- **Whisper transcription** (side panel): transcribe a track with an external whisper.cpp CLI (`whisper-cli` next to the app or on PATH; ggml model set in Settings). Click a segment to play from there. No model or binary is bundled.
+
+### Audio engine
+- Playback resampler upgraded from linear interpolation to FFT resampling via **rubato** (fixed input+output blocks, anti-aliased; identity fast-path when rates match).
+
+### Evaluated, not adopted
+- **DeepFilterNet** noise suppression: the current `deep_filter` crate on crates.io is a years-old 0.2.x line whose runtime is not included by default; newer releases are not published. RNNoise (existing "AI denoise" effect) remains the in-app AI denoise, and Whisper can denoise externally. Revisit when the crate situation improves.
+
 ## 0.8.4 (2026-10-18)
 ### Added
 - **StreamWave for Mac.** One universal app for Apple Silicon and Intel Macs, macOS 11 Big Sur or later, as `StreamWave_0.8.4_universal.dmg` (drag into Applications) and `StreamWave_0.8.4_universal.app.zip`. It's ad-hoc signed but not notarised yet, so the first time right-click the app and choose **Open** (on newer macOS: **System Settings → Privacy & Security → Open Anyway**). FFmpeg is found in the Homebrew and MacPorts folders too (`brew install ffmpeg`), because apps opened from Finder get a short `PATH`.

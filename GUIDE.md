@@ -95,6 +95,7 @@ Studio Sound analyses the selected track and builds an editable effect chain:
 ## Export
 Use **Export** (Ctrl+E) in the side panel: WAV (16/24-bit with dither, or 32-bit float), FLAC, WavPack, MKA, MP3, Ogg Vorbis, Opus, WebM, Speex. You can set bitrate or quality, sample rate, mono/stereo, and tags (title, artist, album, year, genre, comment).
 WAV is written by StreamWave itself. All other formats use **FFmpeg**, which StreamWave finds at runtime: first next to the StreamWave executable, then on `PATH` (on Mac also the Homebrew and MacPorts folders `/opt/homebrew/bin`, `/usr/local/bin` and `/opt/local/bin`, because apps opened from Finder get a short `PATH`). If it isn't found, the panel explains this and only WAV is offered.
+**Batch export** (⇩⇩ in the toolbar) writes every track as a 24-bit WAV into a folder you pick, with a Loudness slot applied at the target from Settings (−14 / −16 / −23 LUFS).
 
 ### Getting / bundling FFmpeg (LGPL build)
 - **Windows**: download an *LGPL shared* build (e.g. the `ffmpeg-n7.x-latest-win64-lgpl-shared` zip from github.com/BtbN/FFmpeg-Builds). Put `ffmpeg.exe` and its DLLs next to `streamwave.exe`, or on PATH.
@@ -107,8 +108,26 @@ WAV is written by StreamWave itself. All other formats use **FFmpeg**, which Str
 - While **armed**, StreamWave keeps a rolling **pre-record buffer** of the selected mic (0-60 s, default 30 s, in Settings).
   - **⟲ Save last N s** (or **Ctrl+Shift+R**) saves it as a new take.
   - The option "Add the buffer to the start when I press Record" includes the moments before you hit Record.
-- **Live mic check**: friendly warnings, and the meter changes colour, for clipping, too quiet, no signal (muted or unplugged mic), DC offset and 50/60 Hz mains hum.
-- **The mic is never taken exclusively**: WASAPI is always opened in shared mode. On Linux, only shared sound-server routes are listed (default / PulseAudio / PipeWire / JACK); raw `hw:` devices that would lock the card are hidden. OBS, Discord and other apps keep working with the same mic, buffer included. (ASIO drivers are usually single-client by design, which is why ASIO is an optional build feature.)
+- **Safety track** (Settings): also writes a `*_safety.wav` copy of every take at −12 dB. If the main take clips, boost the safety copy to rescue it.
+- **Voice trigger** (Settings): starts recording when the input stays above a threshold for a hold time, and stops ~1.5 s after it drops. Handy for hands-free or long unattended sessions.
+- **Live mic check**: friendly warnings, and the meter changes colour, for clipping, too quiet, no signal (muted or unplugged mic), DC offset and 50/60 Hz mains hum.- **The mic is never taken exclusively**: WASAPI is always opened in shared mode. On Linux, only shared sound-server routes are listed (default / PulseAudio / PipeWire / JACK); raw `hw:` devices that would lock the card are hidden. OBS, Discord and other apps keep working with the same mic, buffer included. (ASIO drivers are usually single-client by design, which is why ASIO is an optional build feature.)
+
+## Transcription (Whisper)
+The **Transcript** panel transcribes the active track's first source file with an external **whisper.cpp** CLI — nothing AI is bundled:
+1. Install whisper.cpp so that `whisper-cli` (or `whisper`/`main`) is on `PATH`, or place the executable next to StreamWave.
+2. Download a ggml model (e.g. `ggml-base.en.bin`) from https://huggingface.co/ggerganov/whisper.cpp and set its path in **Settings → Whisper model** (if it's named `ggml-*.bin` and sits next to the app, it's found automatically).
+3. **Transcribe track** → click any line to play from that moment.
+
+## Feeding OBS / Discord / Zoom from StreamWave
+StreamWave can't install audio drivers itself, but virtual audio cables work today:
+- Install a virtual cable (VB-CABLE, VoiceMeeter, or the "Stereo Mix" that some sound cards already expose).
+- StreamWave detects virtual devices and says so in **Settings → Speakers / output**: pick the cable as the output, then choose the same cable as the **microphone** in OBS / Discord / Zoom. Everything StreamWave plays — including the **▶ Mix all** mixdown — comes out there.
+
+## Editing extras
+- **✂ Silences** (on a track): scans for pauses below the noise floor + 8 dB (min 250 ms, with 80 ms padding so word tails survive). Review the count, then **Trim N silences** cuts them in one undoable step.
+- **Selection panel** (side bar): set per-clip **gain (dB)** and **fade in/out (ms)** for the selected range. Non-destructive — baked on export. Clips with different settings stay split.
+- **▶ Mix all**: renders every track with its effects and plays the full mix.
+- Double-clicking a `.twt` project file opens it in StreamWave.
 
 ## Build on Windows
 1. **Rust**: install from https://rustup.rs (choose the MSVC toolchain). You also need **Visual Studio Build Tools 2022** with "Desktop development with C++".
@@ -172,10 +191,10 @@ src-tauri/src/settings.rs persisted settings
 ## Known gaps / next steps
 - Exclusive device access is deliberately not supported, so the mic can always be shared with other apps.
 - The meter covers the *selected* input only.
-- Playback resampling is linear (only used when the file rate differs from the device). Rubato is a possible upgrade.
+- Playback resampling uses rubato (FFT). Note: rubato 5.0.1's `Fft` in fixed-input mode drifts from the true ratio, so StreamWave pins both input and output block sizes (fixed+fixed mode), which keeps the ratio exact.
 - Toggling bypass on a look-ahead effect (limiter, noise reduction, RNNoise) during playback can shift audio by up to ~40 ms once. Export is unaffected.
-- RNNoise (Denoise) is tuned for 48 kHz. At other rates it still works but is less effective.
-- Imported files are decoded fully into memory (about 1 GB per hour of stereo audio). Very long files are slow to open.
+- RNNoise (Denoise) is tuned for 48 kHz. At other rates it still works but is less effective. DeepFilterNet was evaluated as an upgrade but the current crates.io crate is an old 0.2.x line without a usable runtime; revisit later.
+- Imported files are decoded fully into memory (about 1 GB per hour of stereo audio). Very long files are slow to open; true streaming decode is a future improvement.
 - Long recordings are split into `_partN.wav` every ~3.8 GB (about 3 h at 48 kHz stereo). They are imported as separate tracks.
 - Flatpak packaging is a follow-up.
 - Auto-backoff restarts the input stream, which is deferred while recording.

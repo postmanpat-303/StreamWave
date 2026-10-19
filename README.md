@@ -69,6 +69,14 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | 🌈 **Spectrogram view** | Switch any track between waveform and spectrogram, with a log or linear frequency scale and Classic, Inferno or Greyscale colours. Good for spotting hum, hiss and plosives. |
 | 🏷 **Label tracks** | **Ctrl+B** adds an editable text label at the cursor or selection. Export labels as Audacity-compatible text or turn them into markers/chapters. |
 | 🩺 **Live mic check** | Friendly warnings for clipping, too quiet, dead channel, DC offset and 50/60 Hz hum, before they ruin a recording. |
+| 🛡 **Safety track** | Every recording is also written as a −12 dB `*_safety.wav` copy in lock-step with the main file. Clipped a take? Boost the safety copy and rescue it. |
+| 🎙 **Voice-triggered recording** | Set a level threshold — StreamWave arms itself, starts recording when you speak and stops ~1.5 s after you stop. Perfect for long streams and unattended capture. |
+| ✂️ **Silence auto-trim** | One click finds dead air and filler pauses and marks them for removal; accept or reject each region, non-destructively. |
+| 🎚 **Per-clip gain & fades** | Every clip gets its own gain and fade in/out — duck music under a voiceover, smooth punch-ins, level a rant across takes. |
+| 📤 **Batch export** | Export every track to WAV/MP3/FLAC/Opus in one pass, each normalised to −14 / −16 / −23 LUFS. Naming and tags handled for you. |
+| ▶️ **Mixdown playback** | Hear the whole project — all tracks with their effects — exactly as it will export, right from the transport bar. |
+| 📝 **Whisper transcription** | Transcribe takes locally with any whisper.cpp ggml model — speech-to-text, per-clip, fully on-device. |
+| 🎧 **Virtual output guidance** | Setting up OBS or Discord routing on Windows? Built-in step-by-step guides for VB-Cable and the macOS BlackHole equivalent. |
 
 ## 📸 Screenshots
 
