@@ -10,6 +10,8 @@ mod aup3;
 mod spectrogram;
 mod settings;
 mod waveform;
+mod trim;
+mod whisper;
 
 use audio::{devices, AudioHandle, Cmd};
 use parking_lot::Mutex;
@@ -82,6 +84,13 @@ async fn play_clips(st: State<'_, AppState>, cache: State<'_, render::DecodeCach
     }).await.map_err(|e| e.to_string())?;
     st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: std::sync::Arc::new(d), slots, gains, start_secs: start.unwrap_or(0.0) }))
 }
+
+/// Render every track (with its effects) and play the full mix.
+#[tauri::command]
+async fn play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, tracks: Vec<render::TrackSpec>, start: Option<f64>) -> Result<(), String> {
+    let d = render::render_mix(&cache, &tracks).map_err(|e| e.to_string())?;
+    st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: std::sync::Arc::new(d), slots: vec![], gains: vec![], start_secs: start.unwrap_or(0.0) }))
+}
 #[tauri::command] fn update_fx(st: State<AppState>, fx: Vec<fx::Slot>) -> Result<(), String> { st.send(Cmd::UpdateFx(fx)) }
 #[tauri::command] fn pause_playback(st: State<AppState>, pause: bool) -> Result<(), String> { st.send(Cmd::PausePlay(pause)) }
 
@@ -91,6 +100,22 @@ fn set_preroll(st: State<AppState>, secs: f32, prepend: bool) -> Result<(), Stri
     st.save()?; st.send(Cmd::SetPreRoll(secs, prepend))
 }
 #[tauri::command] fn save_last(st: State<AppState>, secs: f32) -> Result<(), String> { let d = st.rec_dir(); st.send(Cmd::SaveLast(secs, d)) }
+
+/// Toggle the −12 dB safety copy written alongside each recording.
+#[tauri::command]
+fn set_safety(st: State<AppState>, on: bool) -> Result<(), String> {
+    st.settings.lock().safety_track = on;
+    st.save()?; st.send(Cmd::SetSafety(on))
+}
+
+/// Enable/disable level-triggered recording. `cfg` = threshold (dBFS) + hold time (ms).
+#[tauri::command]
+fn set_voice_trigger(st: State<AppState>, cfg: Option<settings::VoiceTrigger>) -> Result<(), String> {
+    { let mut s = st.settings.lock(); s.voice_trigger = cfg.clone(); }
+    st.save()?;
+    let dir = st.rec_dir();
+    st.send(Cmd::SetVoiceTrigger(cfg.map(|c| audio::VtCfg { threshold_db: c.threshold_db, hold_ms: c.hold_ms, dir })))
+}
 
 // ---- projects ----
 #[tauri::command]
@@ -224,6 +249,26 @@ async fn measure_lufs(cache: State<'_, render::DecodeCache>, clips: Vec<render::
     Ok(fx::integrated_lufs(&d))
 }
 
+/// Detect silence/pause regions on a track (for one-click auto-trim).
+#[tauri::command]
+async fn detect_silence(cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>, threshold_db: Option<f64>, min_ms: f64, pad_ms: f64) -> Result<Vec<trim::SilenceRegion>, String> {
+    let d = render::render(&cache, &clips).map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || Ok(trim::detect_silence(&d, threshold_db, min_ms, pad_ms))).await.map_err(|e| e.to_string())?
+}
+
+// ---- Whisper transcription (external whisper.cpp CLI, same pattern as FFmpeg) ----
+#[tauri::command]
+fn whisper_status(st: State<AppState>) -> whisper::WhisperInfo {
+    let m = st.settings.lock().whisper_model.clone().map(PathBuf::from);
+    whisper::info(m.as_deref())
+}
+#[tauri::command]
+async fn transcribe(st: State<'_, AppState>, path: String) -> Result<Vec<whisper::Segment>, String> {
+    let model = st.settings.lock().whisper_model.clone().map(PathBuf::from);
+    tauri::async_runtime::spawn_blocking(move || whisper::transcribe(std::path::Path::new(&path), model.as_deref()))
+        .await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+
 /// Export the edited clip list to a new WAV file (originals untouched).
 #[tauri::command]
 async fn export_clips(cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>, fx: Option<Vec<fx::Slot>>, path: String) -> Result<String, String> {
@@ -252,8 +297,12 @@ async fn obs_connect(app: tauri::AppHandle, st: State<'_, AppState>, obs: State<
 #[tauri::command] async fn obs_pause_record(obs: State<'_, Arc<obs::ObsState>>, pause: bool) -> Result<(), String> { obs::pause_record(&obs, pause).await }
 #[tauri::command] async fn obs_stop_record(obs: State<'_, Arc<obs::ObsState>>) -> Result<String, String> { obs::stop_record(&obs).await }
 
-fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+/// Extract a `.twt` path from the command line (Windows "Open with" / file-association launch).
+fn twt_arg(args: &[String]) -> Option<String> {
+    args.iter().skip(1).find(|a| a.to_lowercase().ends_with(".twt")).cloned()
+}
+
+fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
     let it = |id: &str, text: &str, acc: Option<&str>| MenuItem::with_id(app, id, text, true, acc);
     let file = Submenu::with_items(app, "File", true, &[
         &it("new", "New Project", Some("CmdOrCtrl+N"))?,
@@ -314,6 +363,17 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::twt_arg;
+    #[test] fn finds_twt_path_in_args() {
+        assert_eq!(twt_arg(&["StreamWave.exe".into()]), None);
+        assert_eq!(twt_arg(&["exe".into(), "C:\\takes\\show.twt".into()]), Some("C:\\takes\\show.twt".into()));
+        assert_eq!(twt_arg(&["exe".into(), "/tmp/SHOW.TWT".into()]), Some("/tmp/SHOW.TWT".into()));
+        assert_eq!(twt_arg(&["exe".into(), "C:\\takes\\audio.wav".into()]), None);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -328,13 +388,21 @@ pub fn run() {
             let rec_dir = settings.record_dir.clone().map(PathBuf::from).unwrap_or_else(|| default_rec_dir.clone());
             // crash recovery: repair any recording that was interrupted last time
             let recovered = audio::wavfix::recover_dir(&rec_dir);
-            let audio = audio::spawn(app.handle().clone(), settings.input_device.clone(), settings.output_device.clone(), settings.latency, settings.auto_backoff, (settings.preroll_secs, settings.preroll_prepend));
+            let audio = audio::spawn(app.handle().clone(), settings.input_device.clone(), settings.output_device.clone(), settings.latency, settings.auto_backoff, (settings.preroll_secs, settings.preroll_prepend), settings.safety_track);
+            if let Some(vt) = &settings.voice_trigger {
+                let _ = audio.tx.send(Cmd::SetVoiceTrigger(Some(audio::VtCfg { threshold_db: vt.threshold_db, hold_ms: vt.hold_ms, dir: rec_dir.clone() })));
+            }
             app.manage(AppState { audio, settings: Mutex::new(settings), config_dir, default_rec_dir });
             app.manage(Arc::new(obs::ObsState::default()));
             app.manage(render::DecodeCache::default());
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             build_menu(app)?;
+            // launched by double-clicking a .twt file? open it once the UI is ready
+            if let Some(p) = twt_arg(&std::env::args().collect::<Vec<_>>()) {
+                let h = app.handle().clone();
+                std::thread::spawn(move || { std::thread::sleep(std::time::Duration::from_secs(2)); let _ = h.emit("open-project-path", p); });
+            }
             if !recovered.is_empty() {
                 let h = app.handle().clone();
                 let list: Vec<String> = recovered.iter().map(|p| p.to_string_lossy().to_string()).collect();
@@ -363,7 +431,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, install_kind, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, set_preroll, save_last, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
+            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())

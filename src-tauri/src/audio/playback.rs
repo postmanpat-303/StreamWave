@@ -34,31 +34,86 @@ impl Drop for Session {
     fn drop(&mut self) { self.stop.store(true, Relaxed); if let Some(h) = self.render.take() { let _ = h.join(); } }
 }
 
-/// Streaming linear resampler + channel mapper (identity fast-path when nothing changes).
-pub struct Resampler { ratio: f64, t: f64, prev: Vec<f32>, have_prev: bool, in_ch: usize, out_ch: usize }
+/// Input frames buffered per rubato call (adds ~21 ms of pipeline latency, only when
+/// the output device rate differs from the source rate).
+const RESAMPLE_CHUNK: usize = 1024;
+
+/// Streaming resampler: FFT-based rate conversion (rubato) when rates differ, identity
+/// fast-path otherwise; channel mapping runs as a separate final stage.
+pub struct Resampler {
+    inner: Option<rubato::Fft<f32>>,
+    buf: Vec<f32>, // whole interleaved input frames not yet fed to rubato
+    in_ch: usize, out_ch: usize,
+}
 impl Resampler {
     pub fn new(in_rate: u32, out_rate: u32, in_ch: usize, out_ch: usize) -> Self {
-        Self { ratio: in_rate as f64 / out_rate as f64, t: 0.0, prev: vec![0.0; in_ch], have_prev: false, in_ch: in_ch.max(1), out_ch: out_ch.max(1) }
+        let (in_ch, out_ch) = (in_ch.max(1), out_ch.max(1));
+        let inner = (in_rate != out_rate).then(|| {
+            // FixedSync::Both: rubato rounds the chunk to a valid block multiple on both sides
+            // (e.g. 48k→44.1k turns 1024 into 1120 in / 1029 out per call) and keeps the ratio exact.
+            rubato::Fft::<f32>::new(in_rate as usize, out_rate as usize, RESAMPLE_CHUNK, in_ch, rubato::FixedSync::Both)
+                .expect("resampler construction")
+        });
+        Self { inner, buf: Vec::with_capacity(RESAMPLE_CHUNK * in_ch * 2), in_ch, out_ch }
     }
-    fn map(&self, f: &[f32], out: &mut Vec<f32>) {
-        if self.out_ch == 1 && self.in_ch > 1 { out.push(f.iter().sum::<f32>() / self.in_ch as f32) }
-        else { for c in 0..self.out_ch { out.push(f[c % self.in_ch]) } }
+    fn map(f: &[f32], out: &mut Vec<f32>, in_ch: usize, out_ch: usize) {
+        if out_ch == 1 && in_ch > 1 { out.push(f.iter().sum::<f32>() / in_ch as f32) }
+        else { for c in 0..out_ch { out.push(f[c % in_ch]) } }
+    }
+    fn emit(interleaved: &[f32], out: &mut Vec<f32>, in_ch: usize, out_ch: usize) {
+        if in_ch == out_ch { out.extend_from_slice(interleaved) }
+        else { for f in interleaved.chunks(in_ch) { Self::map(f, out, in_ch, out_ch) } }
     }
     pub fn process(&mut self, input: &[f32], out: &mut Vec<f32>) {
-        if self.ratio == 1.0 {
-            if self.in_ch == self.out_ch { out.extend_from_slice(input) } else { for f in input.chunks(self.in_ch) { self.map(f, out) } }
-            return;
-        }
-        let mut fr = vec![0f32; self.in_ch];
-        for cur in input.chunks(self.in_ch) {
-            if !self.have_prev { self.prev.copy_from_slice(cur); self.have_prev = true; continue }
-            while self.t < 1.0 {
-                let t = self.t as f32;
-                for c in 0..self.in_ch { fr[c] = self.prev[c] + (cur[c] - self.prev[c]) * t }
-                self.map(&fr, out);
-                self.t += self.ratio;
+        match &mut self.inner {
+            None => Self::emit(input, out, self.in_ch, self.out_ch),
+            Some(rs) => {
+                use rubato::Resampler as _;
+                let (in_ch, out_ch) = (self.in_ch, self.out_ch);
+                self.buf.extend_from_slice(input);
+                loop {
+                    let need = rs.input_frames_next();
+                    if self.buf.len() / in_ch < need { break }
+                    let view = rubato::audioadapter_buffers::direct::InterleavedSlice::new(&self.buf[..need * in_ch], in_ch, need).expect("adapter view");
+                    match rs.process(&view, None) {
+                        Ok(o) => { let inter = o.take_data(); Self::emit(&inter, out, in_ch, out_ch) }
+                        Err(_) => break,
+                    }
+                    self.buf.drain(..need * in_ch);
+                }
             }
-            self.t -= 1.0; self.prev.copy_from_slice(cur);
+        }
+    }
+    /// Drain the input tail: zero-pad to a full chunk and mark the real length via `partial_len`.
+    /// Drain the input tail: feed the remaining real frames as a partial chunk, then pump
+    /// zero chunks until the resampler's internal delay has been emitted.
+    pub fn flush(&mut self, out: &mut Vec<f32>) {
+        if let Some(rs) = &mut self.inner {
+            use rubato::Resampler as _;
+            let (in_ch, out_ch) = (self.in_ch, self.out_ch);
+            let mut tmp = std::mem::take(&mut self.buf);
+            let avail = tmp.len() / in_ch;
+            if avail > 0 {
+                let need = rs.input_frames_next();
+                tmp.resize(need * in_ch, 0.0);
+                let view = rubato::audioadapter_buffers::direct::InterleavedSlice::new(&tmp, in_ch, need).expect("adapter view");
+                let idx = rubato::Indexing { input_offset: 0, output_offset: 0, partial_len: Some(avail), active_channels_mask: None };
+                if let Ok(o) = rs.process(&view, Some(&idx)) { let inter = o.take_data(); Self::emit(&inter, out, in_ch, out_ch) }
+            }
+            // the resampler holds back ~output_delay() output frames; pump zeros to release them
+            let mut produced = 0usize;
+            let delay = rs.output_delay();
+            let mut zeros: Vec<f32> = Vec::new();
+            while produced < delay {
+                let need = rs.input_frames_next();
+                zeros.clear(); zeros.resize(need * in_ch, 0.0);
+                let view = rubato::audioadapter_buffers::direct::InterleavedSlice::new(&zeros, in_ch, need).expect("adapter view");
+                let idx = rubato::Indexing { input_offset: 0, output_offset: 0, partial_len: Some(0), active_channels_mask: None };
+                match rs.process(&view, Some(&idx)) {
+                    Ok(o) => { let inter = o.take_data(); produced += inter.len() / in_ch; Self::emit(&inter, out, in_ch, out_ch) }
+                    Err(_) => break,
+                }
+            }
         }
     }
 }
@@ -179,9 +234,12 @@ fn render_loop(req: PlayRequest, start_src: usize, total: usize, out_sr: u32, ou
         let queued = prod.buffer().capacity() - prod.slots();
         if queued >= target || sh.paused.load(Relaxed) { std::thread::sleep(Duration::from_millis(3)); continue }
         if pos >= total {
-            if !flushed { fxout.clear(); chain.flush(&mut fxout); devout.clear(); rs.process(&fxout, &mut devout); pending.extend_from_slice(&devout); flushed = true; continue }
+            if !flushed {
+                fxout.clear(); chain.flush(&mut fxout); devout.clear(); rs.process(&fxout, &mut devout); rs.flush(&mut devout);
+                pending.extend_from_slice(&devout); flushed = true; continue
+            }
             if pending.is_empty() { sh.done.store(true, Relaxed) }
-            std::thread::sleep(Duration::from_millis(5)); continue;
+            std::thread::sleep(Duration::from_millis(5)); continue
         }
         let n = BLOCK.min(total - pos);
         fxout.clear(); chain.process(&d.samples[pos * ch..(pos + n) * ch], &mut fxout); pos += n;
@@ -193,13 +251,26 @@ fn render_loop(req: PlayRequest, start_src: usize, total: usize, out_sr: u32, ou
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn resampler_identity_and_rate_change() {
+    #[test] fn resampler_identity_and_channel_mapping() {
         let x: Vec<f32> = (0..2000).map(|i| (i as f32 * 0.01).sin()).collect();
         let mut r = Resampler::new(48000, 48000, 1, 1); let mut o = vec![]; r.process(&x, &mut o); assert_eq!(o, x);
+        // channel mapping without rate conversion
+        let mut r = Resampler::new(48000, 48000, 2, 1); let mut o = vec![]; r.process(&[1.0, 0.0, 0.5, 0.5], &mut o); assert_eq!(o, vec![0.5, 0.5]);
+        let mut r = Resampler::new(48000, 48000, 1, 2); let mut o = vec![]; r.process(&[0.25, -0.5], &mut o); assert_eq!(o, vec![0.25, 0.25, -0.5, -0.5]);
+    }
+    #[test] fn resampler_rate_change_matches_length() {
+        let x: Vec<f32> = (0..4096).map(|i| (i as f32 * 0.01).sin()).collect();
         let mut r = Resampler::new(48000, 44100, 1, 2); let mut o = vec![];
         for c in x.chunks(37) { r.process(c, &mut o) }
-        let frames = o.len() / 2; assert!((frames as f32 - 2000.0 * 44100.0 / 48000.0).abs() < 3.0, "{frames}");
+        // whole rubato blocks carry the exact ratio (48k→44.1k: 1120 in → 1029 out per block)
+        let frames_before_flush = o.len() / 2;
+        assert!((frames_before_flush as f32 - 3087.0).abs() < 2.0, "{frames_before_flush}");
+        r.flush(&mut o);
+        let frames = o.len() / 2;
+        assert!(frames > frames_before_flush, "flush must drain the tail, {frames}");
+        assert!(frames <= 3087 + 1029 * 2, "{frames}");
         assert!(o.chunks(2).all(|f| f[0] == f[1]));
-        let mut r = Resampler::new(48000, 48000, 2, 1); let mut o = vec![]; r.process(&[1.0, 0.0, 0.5, 0.5], &mut o); assert_eq!(o, vec![0.5, 0.5]);
+        // energy is preserved-ish (no wild overshoot from the FFT resampler)
+        assert!(o.iter().all(|&v| v.abs() <= 1.2));
     }
 }

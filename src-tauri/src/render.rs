@@ -6,7 +6,14 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[derive(Deserialize, Clone, Debug)]
-pub struct ClipSpec { pub src: String, pub start: f64, pub end: f64 }
+pub struct ClipSpec {
+    pub src: String, pub start: f64, pub end: f64,
+    /// Per-clip gain in dB (applied while rendering; original files untouched).
+    #[serde(default)] pub gain_db: Option<f64>,
+    /// Raised-cosine fade lengths in milliseconds.
+    #[serde(default)] pub fade_in_ms: Option<f64>,
+    #[serde(default)] pub fade_out_ms: Option<f64>,
+}
 
 /// Decoded sources, most-recently-used first. Bounded so long sessions with many big files
 /// don't eat all RAM (a 1 h stereo 48 kHz file is ~1.4 GB as f32).
@@ -50,15 +57,22 @@ pub fn render(cache: &DecodeCache, clips: &[ClipSpec]) -> anyhow::Result<Decoded
         // output frame g reads source position start + (g - tl*rate) * ratio, same as without the cut
         let s0 = c.start * d.sample_rate as f64 + (g0 - tl * rate as f64) * ratio;
         tl += len;
+        // per-clip gain + raised-cosine fades
+        let gain = c.gain_db.map(|db| 10f64.powf(db / 20.0) as f32).unwrap_or(1.0);
+        let fi = c.fade_in_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
+        let fo = c.fade_out_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
         for f in 0..n {
             let pos = s0 + f as f64 * ratio;
             let i = pos as usize;
             if i >= frames { break }
             let j = (i + 1).min(frames - 1); let t = (pos - i as f64) as f32;
+            let mut g = gain;
+            if let Some(fi) = fi { if fi > 0 && f < fi { g *= (0.5 * (1.0 - (std::f64::consts::PI * f as f64 / fi as f64).cos())) as f32 } }
+            if let Some(fo) = fo { if fo > 0 && f + fo >= n { let k = n - 1 - f; g *= (0.5 * (1.0 - (std::f64::consts::PI * k as f64 / fo as f64).cos())) as f32 } }
             for k in 0..ch {
                 let sc = k % d.channels;
                 let a = d.samples[i * d.channels + sc]; let b = d.samples[j * d.channels + sc];
-                out.push(a + (b - a) * t);
+                out.push((a + (b - a) * t) * g);
             }
         }
     }
@@ -112,7 +126,7 @@ mod tests {
         let cache = DecodeCache::default();
         let p = src.to_string_lossy().to_string();
         // keep 0..0.2 and 0.5..0.6 => 300 samples
-        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.2 }, ClipSpec { src: p, start: 0.5, end: 0.6 }]).unwrap();
+        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.2, gain_db: None, fade_in_ms: None, fade_out_ms: None }, ClipSpec { src: p, start: 0.5, end: 0.6, gain_db: None, fade_in_ms: None, fade_out_ms: None }]).unwrap();
         assert_eq!(d.samples.len(), 300);
         assert!((d.samples[200] - 0.5).abs() < 1e-3);
         let out = dir.join("out.wav"); write_wav(&d, &out).unwrap();
@@ -128,7 +142,7 @@ mod tests {
         for i in 0..16000 { let x = (i as f32 * 0.37).sin(); w.write_sample(x).unwrap(); w.write_sample(-x).unwrap(); }
         w.finalize().unwrap();
         let p = src.to_string_lossy().to_string(); let cache = DecodeCache::default();
-        let c = |a: f64, b: f64| ClipSpec { src: p.clone(), start: a, end: b };
+        let c = |a: f64, b: f64| ClipSpec { src: p.clone(), start: a, end: b, gain_db: None, fade_in_ms: None, fade_out_ms: None };
         let whole = render(&cache, &[c(0.1, 1.9)]).unwrap();
         for cuts in [vec![0.33371], vec![0.2, 0.70001, 1.234567], vec![1.0 / 3.0, 2.0 / 3.0]] {
             let mut pts = vec![0.1]; pts.extend(cuts.iter().copied()); pts.push(1.9);
@@ -138,5 +152,22 @@ mod tests {
             let diff = split.samples.iter().zip(&whole.samples).fold(0f32, |m, (a, b)| m.max((a - b).abs()));
             assert!(diff < 1e-5, "{cuts:?}: {diff}");
         }
+    }
+    #[test] fn applies_clip_gain_and_fades() {
+        let dir = std::env::temp_dir().join("tw_render_fades"); let _ = std::fs::remove_dir_all(&dir); std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("src.wav");
+        let spec = hound::WavSpec { channels: 1, sample_rate: 1000, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+        let mut w = hound::WavWriter::create(&src, spec).unwrap();
+        for _ in 0..1000 { w.write_sample(1.0f32).unwrap(); }
+        w.finalize().unwrap();
+        let cache = DecodeCache::default();
+        let p = src.to_string_lossy().to_string();
+        // −6.02 dB ≈ half amplitude
+        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.5, gain_db: Some(-6.0206), fade_in_ms: None, fade_out_ms: None }]).unwrap();
+        assert!((d.samples[400] - 0.5).abs() < 1e-3);
+        // 500 ms fade-in over a 500 ms clip: starts at 0, ends at full scale
+        let d = render(&cache, &[ClipSpec { src: p, start: 0.0, end: 0.5, gain_db: None, fade_in_ms: Some(500.0), fade_out_ms: None }]).unwrap();
+        assert!(d.samples[0].abs() < 1e-6);
+        assert!((d.samples[499] - 1.0).abs() < 1e-3);
     }
 }

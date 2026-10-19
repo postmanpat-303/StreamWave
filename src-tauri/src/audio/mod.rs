@@ -39,6 +39,10 @@ pub enum Cmd {
     SetPreRoll(f32, bool),
     /// Write the last N seconds of the pre-roll buffer to a WAV in `dir`.
     SaveLast(f32, PathBuf),
+    /// Also record a −12 dB safety copy alongside the main take.
+    SetSafety(bool),
+    /// Level-triggered auto record (None = off).
+    SetVoiceTrigger(Option<VtCfg>),
 }
 
 #[derive(Default)]
@@ -70,14 +74,15 @@ fn store_peak(a: &AtomicU32, v: f32) {
     }
 }
 
-pub fn spawn(app: AppHandle, initial_in: Option<String>, initial_out: Option<String>, latency: LatencyProfile, auto_backoff: bool, preroll: (f32, bool)) -> AudioHandle {
+pub fn spawn(app: AppHandle, initial_in: Option<String>, initial_out: Option<String>, latency: LatencyProfile, auto_backoff: bool, preroll: (f32, bool), safety: bool) -> AudioHandle {
     let (tx, rx) = mpsc::channel();
     let shared = Arc::new(Shared::default());
     let sh = shared.clone();
     let app2 = app.clone();
     std::thread::Builder::new().name("sw-audio-engine".into()).spawn(move || {
         let mut e = Engine { app: app2, sh, preroll: PreRoll::new(0.0, 1, 48000), preroll_secs: preroll.0, prepend: preroll.1, mic: MicCheck::new(1, 48000), input: None, output: None, input_id: initial_in, output_id: initial_out, latency, auto_backoff,
-            writer: None, pending_backoff: false, wanted: None, last_xruns: 0, last_xrun_check: Instant::now(), channels: 2 };
+            writer: None, pending_backoff: false, wanted: None, last_xruns: 0, last_xrun_check: Instant::now(), channels: 2, safety,
+            vt: None, vt_above: None, vt_below: None, vt_recording: false, mon_peak: 0.0 };
         e.open_input();
         e.run(rx);
     }).expect("spawn audio engine");
@@ -98,6 +103,10 @@ pub fn spawn(app: AppHandle, initial_in: Option<String>, initial_out: Option<Str
 
 struct Writer { stop: Arc<AtomicBool>, handle: JoinHandle<anyhow::Result<(PathBuf, rtrb::Consumer<f32>)>> }
 
+/// Engine-side voice-trigger config (settings + the directory recordings go to).
+#[derive(Clone)]
+pub struct VtCfg { pub threshold_db: f32, pub hold_ms: u64, pub dir: PathBuf }
+
 struct InputStream { _stream: cpal::Stream, consumer: Option<rtrb::Consumer<f32>>, mon: rtrb::Consumer<f32>, channels: u16, sample_rate: u32, buffer_frames: u32 }
 
 struct Engine {
@@ -107,7 +116,9 @@ struct Engine {
     input_id: Option<String>, output_id: Option<String>,
     latency: LatencyProfile, auto_backoff: bool,
     writer: Option<Writer>, pending_backoff: bool, wanted: Option<String>,
-    last_xruns: u64, last_xrun_check: Instant, channels: u16,
+    last_xruns: u64, last_xrun_check: Instant, channels: u16, safety: bool,
+    vt: Option<VtCfg>, vt_above: Option<Instant>, vt_below: Option<Instant>,
+    vt_recording: bool, mon_peak: f32,
 }
 
 fn buffer_for(range: &cpal::SupportedBufferSize, want: u32) -> cpal::BufferSize {
@@ -227,6 +238,7 @@ impl Engine {
         let pre = pre_all;
         let pre_frames = (pre.len() / inp.channels.max(1) as usize) as u64;
         let app2 = self.app.clone();
+        let safety = self.safety;
         let handle = std::thread::Builder::new().name("sw-wav-writer".into()).spawn(move || -> anyhow::Result<(PathBuf, rtrb::Consumer<f32>)> {
             // WAV headers are 32-bit: roll over to a new part well before 4 GiB.
             let max_samples = ROLLOVER_BYTES / 4 / spec.channels.max(1) as u64 * spec.channels.max(1) as u64;
@@ -234,8 +246,15 @@ impl Engine {
             let mut first: Option<PathBuf> = None;
             let mut cur = partial.clone();
             let mut w = hound::WavWriter::create(&cur, spec)?;
+            // optional −12 dB safety copy ("X_safety.partial.wav"), kept in lock-step with the main file
+            let mut cur_s = safety.then(|| safety_name(&partial));
+            let mut ws: Option<hound::WavWriter<std::io::BufWriter<std::fs::File>>> = None;
+            if let Some(ps) = &cur_s { ws = Some(hound::WavWriter::create(ps, spec)?) }
             let mut written = 0u64;
-            for v in &pre { w.write_sample(*v)?; written += 1; }
+            for v in &pre {
+                w.write_sample(*v)?; written += 1;
+                if let Some(ws) = ws.as_mut() { ws.write_sample(*v * SAFETY_GAIN)?; }
+            }
             let mut last_flush = Instant::now();
             let mut err: Option<anyhow::Error> = None;
             'outer: loop {
@@ -256,8 +275,19 @@ impl Engine {
                             part += 1;
                             cur = next;
                             written = 0;
+                            // roll the safety copy in lock-step
+                            if let (Some(ws), Some(ps)) = (ws.as_mut(), cur_s.as_ref()) {
+                                let nexts = part_name(ps, part);
+                                let nsw = match hound::WavWriter::create(&nexts, spec) { Ok(w) => w, Err(e) => { err = Some(e.into()); break 'outer } };
+                                let olds = std::mem::replace(ws, nsw);
+                                if let Err(e) = olds.finalize() { err = Some(e.into()); break 'outer }
+                                let ds = final_name(ps);
+                                if let Err(e) = std::fs::rename(ps, &ds) { err = Some(e.into()); break 'outer }
+                                cur_s = Some(nexts);
+                            }
                         }
                         if let Err(e) = w.write_sample(*v) { err = Some(e.into()); break 'outer }
+                        if let Some(ws) = ws.as_mut() { if let Err(e) = ws.write_sample(*v * SAFETY_GAIN) { err = Some(e.into()); break 'outer } }
                         written += 1;
                     }
                     chunk.commit_all();
@@ -269,6 +299,7 @@ impl Engine {
                 // crash safety: refresh the header + fsync every half second
                 if last_flush.elapsed() > Duration::from_millis(500) {
                     if let Err(e) = w.flush() { err = Some(e.into()); break }
+                    if let Some(ws) = ws.as_mut() { if let Err(e) = ws.flush() { err = Some(e.into()); break } }
                     last_flush = Instant::now();
                 }
             }
@@ -281,6 +312,10 @@ impl Engine {
             w.finalize()?;
             let fin = final_name(&cur);
             std::fs::rename(&cur, &fin)?;
+            if let Some(ws) = ws.take() {
+                ws.finalize()?;
+                if let Some(ps) = cur_s.take() { let fs = final_name(&ps); std::fs::rename(&ps, &fs)?; }
+            }
             if first.is_some() { let _ = app2.emit("record-part", fin.to_string_lossy().to_string()); }
             Ok((first.unwrap_or(fin), cons))
         })?;
@@ -327,11 +362,50 @@ impl Engine {
         let n = inp.mon.slots(); if n == 0 { return }
         if let Ok(chunk) = inp.mon.read_chunk(n) {
             let (a, b) = chunk.as_slices();
+            let mut pk = 0f32;
             for part in [a, b] {
+                for &v in part { pk = pk.max(v.abs()) }
                 self.preroll.push(part);
                 if let Some(r) = self.mic.push(part) { let _ = self.app.emit("mic-check", r); }
             }
+            self.mon_peak = pk;
             chunk.commit_all();
+        }
+    }
+
+    /// Level-triggered record: start when the input stays above the threshold, stop after it
+    /// stays below (with a longer hang so speech pauses don't cut the take).
+    fn voice_trigger_tick(&mut self) {
+        let Some(vt) = self.vt.clone() else { return };
+        if self.sh.paused.load(Relaxed) { return }
+        let peak_db = 20.0 * self.mon_peak.max(1e-6).log10();
+        if self.writer.is_none() {
+            self.vt_below = None;
+            if peak_db >= vt.threshold_db {
+                match self.vt_above {
+                    None => self.vt_above = Some(Instant::now()),
+                    Some(t) if t.elapsed() >= Duration::from_millis(vt.hold_ms) => {
+                        self.vt_recording = true; self.vt_above = None;
+                        let _ = self.app.emit("voice-trigger", "recording");
+                        self.start_record(vt.dir.clone());
+                    }
+                    _ => {}
+                }
+            } else { self.vt_above = None; }
+        } else if self.vt_recording {
+            self.vt_above = None;
+            let hang = Duration::from_millis(vt.hold_ms.max(1500));
+            if peak_db < vt.threshold_db {
+                match self.vt_below {
+                    None => self.vt_below = Some(Instant::now()),
+                    Some(t) if t.elapsed() >= hang => {
+                        self.vt_recording = false; self.vt_below = None;
+                        self.stop_record();
+                        let _ = self.app.emit("voice-trigger", "armed");
+                    }
+                    _ => {}
+                }
+            } else { self.vt_below = None; }
         }
     }
 
@@ -360,7 +434,7 @@ impl Engine {
                 Ok(Cmd::SetLatency(p, ab)) => { self.latency = p; self.auto_backoff = ab; self.open_input(); }
                 Ok(Cmd::StartRecord(dir)) => self.start_record(dir),
                 Ok(Cmd::PauseRecord(p)) => { if self.writer.is_some() { self.sh.paused.store(p, Relaxed); let _ = self.app.emit("record-paused", p); } }
-                Ok(Cmd::StopRecord) => { self.stop_record(); if self.pending_backoff { self.pending_backoff = false; self.open_input(); } }
+                Ok(Cmd::StopRecord) => { self.stop_record(); self.vt_recording = false; self.vt_below = None; if self.pending_backoff { self.pending_backoff = false; self.open_input(); } }
                 Ok(Cmd::PlaySession(req)) => self.play(req),
                 Ok(Cmd::UpdateFx(slots)) => { if let Some(s) = &self.output { s.update_fx(slots) } }
                 Ok(Cmd::PausePlay(p)) => { if self.output.is_some() { self.sh.play.paused.store(p, Relaxed) } }
@@ -381,14 +455,18 @@ impl Engine {
                     self.preroll = PreRoll::new(self.preroll_secs, c, r);
                 }
                 Ok(Cmd::SaveLast(secs, dir)) => self.save_last(secs, dir),
+                Ok(Cmd::SetSafety(on)) => self.safety = on,
+                Ok(Cmd::SetVoiceTrigger(cfg)) => { self.vt = cfg; self.vt_above = None; self.vt_below = None; self.vt_recording = false; }
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => { self.stop_record(); return }
             }
+            self.voice_trigger_tick();
             if !self.sh.play.playing.load(Relaxed) && !self.sh.play.paused.load(Relaxed) && self.output.is_some() { self.output = None; }
             // graceful fallback when the recording device disappears
             if self.sh.device_lost.swap(false, Relaxed) {
                 let lost = self.input_id.clone();
                 let saved = self.stop_record();
+                self.vt_recording = false; self.vt_below = None;
                 let _ = self.app.emit("record-device-lost", serde_json::json!({ "device": lost, "saved": saved.map(|p| p.to_string_lossy().to_string()) }));
                 self.input = None;
                 self.input_id = None; // fall back to the system default
@@ -414,6 +492,9 @@ impl Engine {
 /// Bytes per WAV part before rolling over (WAV sizes are 32-bit).
 const ROLLOVER_BYTES: u64 = 3_800_000_000;
 
+/// Linear gain of the safety copy (−12 dB): loud enough to be useful, low enough to survive clipping.
+const SAFETY_GAIN: f32 = 0.2512;
+
 /// `X.partial.wav` -> `X.wav`, touching only the file name (safe for unicode/odd dirs).
 pub(crate) fn final_name(p: &std::path::Path) -> PathBuf {
     let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
@@ -426,6 +507,12 @@ pub(crate) fn part_name(p: &std::path::Path, n: u32) -> PathBuf {
     let base = name.strip_suffix(".partial.wav").unwrap_or(&name);
     p.with_file_name(format!("{base}_part{n}.partial.wav"))
 }
+/// `X.partial.wav` -> `X_safety.partial.wav`
+pub(crate) fn safety_name(p: &std::path::Path) -> PathBuf {
+    let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let base = name.strip_suffix(".partial.wav").unwrap_or(&name);
+    p.with_file_name(format!("{base}_safety.partial.wav"))
+}
 
 #[cfg(test)]
 mod name_tests {
@@ -436,5 +523,8 @@ mod name_tests {
         assert_eq!(final_name(&p), d.join("StreamWave_1.wav"));
         assert_eq!(part_name(&p, 2), d.join("StreamWave_1_part2.partial.wav"));
         assert_eq!(final_name(&part_name(&p, 2)), d.join("StreamWave_1_part2.wav"));
+        assert_eq!(safety_name(&p), d.join("StreamWave_1_safety.partial.wav"));
+        assert_eq!(final_name(&safety_name(&p)), d.join("StreamWave_1_safety.wav"));
+        assert_eq!(part_name(&safety_name(&p), 2), d.join("StreamWave_1_safety_part2.partial.wav"));
     }
 }
