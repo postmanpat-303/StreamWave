@@ -2,7 +2,7 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## 0.9.0 (2026-10-19)
 
 ### Recording
 - **Safety track** (Settings): every recording is also written as a `*_safety.wav` copy at −12 dB, in lock-step with the main file (same pre-roll, rollover and crash recovery). Rescue clipped takes by boosting the safety copy.
