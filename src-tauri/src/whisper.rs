@@ -19,10 +19,10 @@ pub fn find_whisper() -> Option<PathBuf> {
             for n in names { let p = dir.join(n); if p.is_file() { return Some(p) } }
         }
     }
-    // 2) PATH
-    let path = std::env::var_os("PATH")?;
-    for d in std::env::split_paths(&path) {
-        for n in names { let p = d.join(n); if p.is_file() { return Some(p) } }
+    // 2) PATH (plus Homebrew/MacPorts on macOS, like FFmpeg). Only the specific names here: whisper.cpp's old
+    //    generic `main` binary is accepted next to StreamWave, not from PATH, where `main` could be any program.
+    for d in crate::export::tool_dirs() {
+        for n in names.iter().filter(|n| !n.starts_with("main")) { let p = d.join(n); if p.is_file() { return Some(p) } }
     }
     None
 }

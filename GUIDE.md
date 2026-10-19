@@ -110,11 +110,12 @@ WAV is written by StreamWave itself. All other formats use **FFmpeg**, which Str
   - The option "Add the buffer to the start when I press Record" includes the moments before you hit Record.
 - **Safety track** (Settings): also writes a `*_safety.wav` copy of every take at −12 dB. If the main take clips, boost the safety copy to rescue it.
 - **Voice trigger** (Settings): starts recording when the input stays above a threshold for a hold time, and stops ~1.5 s after it drops. Handy for hands-free or long unattended sessions.
-- **Live mic check**: friendly warnings, and the meter changes colour, for clipping, too quiet, no signal (muted or unplugged mic), DC offset and 50/60 Hz mains hum.- **The mic is never taken exclusively**: WASAPI is always opened in shared mode. On Linux, only shared sound-server routes are listed (default / PulseAudio / PipeWire / JACK); raw `hw:` devices that would lock the card are hidden. OBS, Discord and other apps keep working with the same mic, buffer included. (ASIO drivers are usually single-client by design, which is why ASIO is an optional build feature.)
+- **Live mic check**: friendly warnings, and the meter changes colour, for clipping, too quiet, no signal (muted or unplugged mic), DC offset and 50/60 Hz mains hum.
+- **The mic is never taken exclusively**: WASAPI is always opened in shared mode. On Linux, only shared sound-server routes are listed (default / PulseAudio / PipeWire / JACK); raw `hw:` devices that would lock the card are hidden. OBS, Discord and other apps keep working with the same mic, buffer included. (ASIO drivers are usually single-client by design, which is why ASIO is an optional build feature.)
 
 ## Transcription (Whisper)
 The **Transcript** panel transcribes the active track's first source file with an external **whisper.cpp** CLI — nothing AI is bundled:
-1. Install whisper.cpp so that `whisper-cli` (or `whisper`/`main`) is on `PATH`, or place the executable next to StreamWave.
+1. Install whisper.cpp so that `whisper-cli` (or `whisper`) is on `PATH` (on Mac, `brew install whisper-cpp` works; Homebrew and MacPorts folders are searched too), or place the executable next to StreamWave (an old `main` binary is only used from there).
 2. Download a ggml model (e.g. `ggml-base.en.bin`) from https://huggingface.co/ggerganov/whisper.cpp and set its path in **Settings → Whisper model** (if it's named `ggml-*.bin` and sits next to the app, it's found automatically).
 3. **Transcribe track** → click any line to play from that moment.
 
