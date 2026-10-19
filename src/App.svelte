@@ -53,6 +53,7 @@
 
   const inputs = $derived(devices.filter((d) => d.is_input));
   const outputs = $derived(devices.filter((d) => !d.is_input));
+  const virtualOutputs = $derived(outputs.filter((d) => /cable|vb-audio|voicemeeter|loopback|stereo mix|virtual audio/i.test(d.friendly_name)));
   const recording = $derived(level.recording);
 
   function toast(text: string, kind = "info") {
@@ -573,6 +574,14 @@
     }
   }
   async function setPreroll() { await api.setPreroll(settings.preroll_secs, settings.preroll_prepend); }
+  let vtState = $state<"off" | "armed" | "recording">("off");
+  async function setVoiceTrigger(on: boolean) {
+    const cur = settings.voice_trigger;
+    const cfg = on ? { threshold_db: cur?.threshold_db ?? -45, hold_ms: cur?.hold_ms ?? 300 } : null;
+    settings.voice_trigger = cfg;
+    vtState = cfg ? "armed" : "off";
+    try { await api.setVoiceTrigger(cfg); } catch (e) { toast(String(e), "err"); }
+  }
   async function saveLast() {
     if (!settings.preroll_secs) { toast("The pre-record buffer is off. Set it in Settings.", "warn"); return; }
     await api.saveLast(settings.preroll_secs); toast(`Saving the last ${settings.preroll_secs}s...`);
@@ -581,6 +590,32 @@
     const t = activeTrack(); if (!t) return;
     try { await api.exportTrack(t.clips, activeChain(t.fx), path, o); toast(`Exported ${path.split(/[\\/]/).pop()}`); }
     catch (e) { toast(`Export failed: ${e}`, "err"); }
+  }
+
+  // ---- batch export every track to WAV with a loudness target ----
+  let batchLufs = $state(-16);
+  let batchBusy = $state(false);
+  async function batchExport() {
+    if (!project.tracks.length || batchBusy) return;
+    const dir = await open({ directory: true, title: "Choose a folder for the exported tracks" });
+    if (!dir || Array.isArray(dir)) return;
+    batchBusy = true;
+    let done = 0, failed = 0;
+    try {
+      for (const t of project.tracks) {
+        const fx = [...(t.fx ?? [])];
+        const i = fx.findIndex((s) => s.fx.type === "Loudness");
+        if (i >= 0) fx[i] = { ...fx[i], fx: { ...(fx[i].fx as Extract<Effect, { type: "Loudness" }>), target_lufs: batchLufs } };
+        else fx.push({ id: nextId++, bypass: false, fx: { type: "Loudness", target_lufs: batchLufs } });
+        const path = `${dir}/${t.name.replace(/[\\/:*?"<>|]/g, "_")}.wav`;
+        try {
+          await api.exportTrack(t.clips, activeChain(fx), path, { format: "wav", sample_rate: null, channels: null, bit_depth: 24,
+            bitrate_kbps: null, quality: null, tags: { title: t.name, artist: "", album: "", date: String(new Date().getFullYear()), genre: "", comment: "Made with StreamWave" } });
+          done++;
+        } catch { failed++; toast(`Failed: ${t.name}`, "err"); }
+      }
+      toast(`Batch export: ${done}/${project.tracks.length} track(s) → ${dir}${failed ? ` (${failed} failed)` : ""}`);
+    } finally { batchBusy = false; }
   }
   let ab = $state(false); // true = hear the original (effects bypassed)
   let lufs = $state<number | null>(null);
@@ -620,6 +655,76 @@
   async function measure() {
     const t = activeTrack(); if (!t) return;
     try { lufs = await api.measureLufs(t.clips, fxFor(t)); if (lufs === null) toast("Too short or silent to measure", "warn"); } catch (e) { toast(String(e), "err"); }
+  }
+
+  // ---- per-clip gain & fades ----
+  let selGain = $state(0);
+  let selFadeIn = $state(0);
+  let selFadeOut = $state(0);
+  function onSelect(t: E.EditTrack, a: number, b: number) {
+    selection = { trackId: t.id, a, b };
+    // pre-fill the panel from the clip under the selection start
+    let pos = 0;
+    for (const c of t.clips) {
+      if (a <= pos + E.clipLen(c) || c === t.clips[t.clips.length - 1]) {
+        selGain = c.gain_db ?? 0; selFadeIn = c.fade_in_ms ?? 0; selFadeOut = c.fade_out_ms ?? 0;
+        break;
+      }
+      pos += E.clipLen(c);
+    }
+  }
+  function applySelProps() {
+    const t = activeTrack();
+    if (!t || !selection || selection.trackId !== t.id || !hasRange()) { toast("Select a range on the active track first", "warn"); return }
+    commit("Clip gain/fades", E.applyClipProps(hist.present, selection, { gain_db: selGain, fade_in_ms: selFadeIn, fade_out_ms: selFadeOut }));
+    sync(); markDirty(); restartIfPlaying();
+  }
+
+  // ---- Whisper transcription ----
+  let whisper = $state<{ found: boolean; path: string | null; model_found: boolean; message: string } | null>(null);
+  let segments = $state<{ start: number; end: number; text: string }[]>([]);
+  let segmentsTrack = $state<number | null>(null);
+  let transcribing = $state(false);
+  async function transcribe() {
+    const t = activeTrack(); if (!t) return;
+    transcribing = true; segments = [];
+    try {
+      segments = await api.transcribe(t.clips[0].src);
+      segmentsTrack = t.id;
+      if (!segments.length) toast("No speech recognized in the first source file of this track", "warn");
+    } catch (e) { toast(`Transcription failed: ${e}`, "err"); }
+    transcribing = false;
+  }
+  async function seekSeg(s: { start: number }) {
+    const t = activeTrack(); if (!t || !t.clips.length) return;
+    if (level.playing) await api.stopPlayback();
+    playingId = t.id; playOffset = 0;
+    try { await api.playClips(t.clips, fxFor(t), s.start); } catch (e) { toast(String(e), "err"); }
+  }
+  async function pickWhisperModel() {
+    const p = await open({ filters: [{ name: "Whisper model", extensions: ["bin"] }] });
+    if (!p || Array.isArray(p)) return;
+    settings.whisper_model = p; await api.saveSettings(settings); whisper = await api.whisperStatus();
+  }
+
+  // ---- silence auto-trim ----
+  let pendingSilences = $state<{ trackId: number; regions: [number, number][] } | null>(null);
+  async function findSilences() {
+    const t = activeTrack(); if (!t) return;
+    pendingSilences = null;
+    try {
+      const regions = (await api.detectSilence(t.clips, null, 250, 80)).map((r) => [r.start, r.end] as [number, number]);
+      if (!regions.length) { toast("No silences found (nothing quieter than the floor + 8 dB for 250 ms)", "warn"); return }
+      pendingSilences = { trackId: t.id, regions };
+      toast(`Found ${regions.length} silence${regions.length > 1 ? "s" : ""} (${fmtTime(regions.reduce((s, r) => s + r[1] - r[0], 0))} total). Click "Trim silences" to cut them.`);
+    } catch (e) { toast(`Silence scan failed: ${e}`, "err"); }
+  }
+  function trimSilences() {
+    const t = activeTrack(); if (!t || !pendingSilences || pendingSilences.trackId !== t.id) return;
+    const n = pendingSilences.regions.length;
+    commit(`Trim ${n} silence${n > 1 ? "s" : ""}`, E.removeRegions(hist.present, t.id, pendingSilences.regions));
+    selection = null; pendingSilences = null; sync(); markDirty(); restartIfPlaying();
+    toast("Silences trimmed (undo with Ctrl+Z)");
   }
 
   // Keyboard: shortcuts never swallow keys inside text fields (native copy/paste/undo work there).
@@ -695,6 +800,14 @@
     playOffset = ranged ? sel!.a : 0; playingId = t.id;
     try { await api.playClips(clips, fxFor(t), ranged ? 0 : sel?.a ?? 0); } catch (e) { toast(String(e), "err"); }
   }
+  /** Render all tracks with their effects and play the full mix. */
+  async function playMix() {
+    const tracks = project.tracks.filter((t) => t.clips.length).map((t) => ({ clips: t.clips, fx: activeChain(t.fx) }));
+    if (!tracks.length) return;
+    if (level.playing) { await api.stopPlayback(); }
+    playingId = -1; playOffset = 0;
+    try { await api.playMix(tracks); } catch (e) { toast(`Mix playback failed: ${e}`, "err"); playingId = null; }
+  }
   function progressFor(t: E.EditTrack) {
     if (playingId !== t.id || !level.playing || !level.play_total) return 0;
     const len = E.trackLen(t); return len ? (playOffset + level.play_secs) / len : 0;
@@ -706,6 +819,8 @@
   onMount(() => {
     (async () => {
       settings = await api.getSettings(); devices = await api.listDevices(); recentProjects = settings.recent_projects;
+      vtState = settings.voice_trigger ? "armed" : "off";
+      whisper = await api.whisperStatus();
       const a = await api.autosaveCheck();
       if (a) { try { if (deserialize(a).tracks.length) recovery = a; else api.autosaveClear(); } catch { api.autosaveClear(); } }
       // quiet update check, at most once a day, a few seconds after startup
@@ -737,8 +852,10 @@
       listen<string>("device-restored", (e) => toast(`${e.payload.split("::")[1]} is back – switched to it`)),
       listen<LatencyProfile>("latency-backoff", (e) => { settings.latency = e.payload; toast(`Audio glitches detected – switched to "${e.payload}" latency`, "warn"); }),
       listen<string[]>("recordings-recovered", (e) => { toast(`Recovered ${e.payload.length} interrupted recording(s)`, "warn"); e.payload.forEach((p) => addTrack(p, "recovered")); }),
+      listen<string>("voice-trigger", (e) => { vtState = e.payload as typeof vtState; toast(e.payload === "recording" ? "Voice trigger: recording started" : "Voice trigger: armed", "warn"); }),
     ];
     uns.push(listen<string>("menu", (e) => onMenu(e.payload as Action)));
+    uns.push(listen<string>("open-project-path", (e) => openProject(e.payload)));
     uns.push(listen<MicReport>("mic-check", (e) => onMic(e.payload)));
     uns.push(listen<string>("obs-scene", (e) => { if (level.recording) addMarker(`Scene: ${e.payload}`, level.rec_secs); }));
     uns.push(getCurrentWebview().onDragDropEvent((e) => {
@@ -804,6 +921,7 @@
     <button onclick={() => run("redo")} disabled={!canRedo} title="Redo (Ctrl+Y)">↷</button>
     <button onclick={importFile}>＋ Import</button>
     <button onclick={() => run("export")} disabled={!project.tracks.length} title="Export (Ctrl+E)">⇩ Export</button>
+    <button onclick={batchExport} disabled={!project.tracks.length || batchBusy} title="Export every track as WAV at the loudness target set in Settings">⇩⇩ Batch</button>
     <button onclick={() => (showSettings = !showSettings)}>⚙ Settings</button>
   </header>
 
@@ -815,7 +933,7 @@
         </button>
         <div class="recinfo">
           <div class="time">{fmtTime(level.rec_secs)}{#if level.paused} <span class="paused">PAUSED</span>{/if}</div>
-          <div class="hint">{recording ? "Recording… press R or click to stop" : "Press R or click to record"}</div>
+          <div class="hint">{recording ? "Recording… press R or click to stop" : "Press R or click to record"}{vtState !== "off" ? ` · 🎙 voice trigger ${vtState === "recording" ? "REC" : "armed"}` : ""}</div>
           <Meter left={level.left} right={level.right} status={micStatus} />
           <div class="armrow">
             <label class="chk"><input type="checkbox" bind:checked={armed} /> Armed: mic check{settings.preroll_secs ? ` + ${settings.preroll_secs}s pre-record buffer` : ""}</label>
@@ -826,6 +944,12 @@
       </div>
 
       <div class="tracks" role="region" aria-label="Tracks" oncontextmenu={openEmptyMenu} onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } }}>
+        {#if project.tracks.length}
+          <div class="mixbar">
+            <button class="small" onclick={playMix} title="Render every track with its effects and play the combined mix">▶ Mix all {project.tracks.length} track{project.tracks.length > 1 ? "s" : ""}</button>
+            {#if playingId === -1 && level.playing}<button class="small" onclick={() => run("stop")}>■ Stop mix</button>{/if}
+          </div>
+        {/if}
         {#if project.tracks.length === 0}
           <div class="empty">No tracks yet. Hit the big red button, import a file, or record in OBS.</div>
         {/if}
@@ -859,6 +983,12 @@
               {:else}
                 <span class="small">{fmtTime(len)}{t.clips.length > 1 ? ` · ${t.clips.length} clips` : ""}{t.fx?.some((f) => !f.bypass) ? ` · ${t.fx.filter((f) => !f.bypass).length} fx` : ""}
                   {#if sel && sel.b - sel.a > 0.0005} · sel {fmtTime(sel.a)}–{fmtTime(sel.b)}{/if}</span>
+                {#if sel}
+                  <button class="small" onclick={findSilences} title="Scan the track for long silences/pauses">✂ Silences</button>
+                {/if}
+                {#if pendingSilences && pendingSilences.trackId === t.id}
+                  <button class="small trimbtn" onclick={trimSilences}>Trim {pendingSilences.regions.length} silence{pendingSilences.regions.length > 1 ? "s" : ""}</button>
+                {/if}
                 <button class="small vbtn" class:on={t.view === "spectrogram"} title="Waveform / spectrogram (Ctrl+Shift+G)" onclick={() => setView(t.id, { view: t.view === "spectrogram" ? "wave" : "spectrogram" }, t.view === "spectrogram" ? "Waveform view" : "Spectrogram view")}>{t.view === "spectrogram" ? "▤ Spectrogram" : "〰 Waveform"}</button>
                 {#if t.view === "spectrogram"}
                   <select class="small vsel" title="Frequency scale" value={t.specScale ?? "log"} onchange={(e) => setView(t.id, { specScale: (e.target as HTMLSelectElement).value as E.SpecScale }, "Spectrogram scale")}>
@@ -892,6 +1022,19 @@
     </section>
 
     <aside>
+      {#if selection && selection.trackId === activeTrack()?.id && hasRange()}
+        <div class="panel">
+          <h3>Selection {fmtTime(selection.a)}–{fmtTime(selection.b)}</h3>
+          <label for="sg">Gain: {selGain} dB</label>
+          <input id="sg" type="range" min="-24" max="12" step="0.5" bind:value={selGain} />
+          <label for="sfi">Fade in (ms)</label>
+          <input id="sfi" type="number" min="0" max="10000" step="10" bind:value={selFadeIn} />
+          <label for="sfo">Fade out (ms)</label>
+          <input id="sfo" type="number" min="0" max="10000" step="10" bind:value={selFadeOut} />
+          <button onclick={applySelProps}>Apply to selection</button>
+          <div class="small">Rides on the clip (non-destructive), baked in on export.</div>
+        </div>
+      {/if}
       {#if recovery}
         <div class="panel rec-banner"><b>Unsaved work found</b><div class="small">StreamWave closed unexpectedly. Do you want your last autosave back?</div>
           <div class="row2"><button onclick={() => recover(true)}>Recover</button><button onclick={() => recover(false)}>Discard</button></div></div>
@@ -900,7 +1043,26 @@
         <ExportPanel trackName={activeTrack()!.name} onexport={doExport} onclose={() => (showExport = false)} />
       {/if}
       <StudioPanel enabled={!!activeTrack()} {ab} busy={studioBusy} {analysis} onrun={studioSound} onab={() => { ab = !ab; lufs = null; liveFx(); }} />
-      <FxPanel track={activeTrack()} {ab} {lufs} hasSelection={hasRange() && selection?.trackId === activeTrack()?.id}
+      {#if activeTrack()}
+        <div class="panel">
+          <h3>Transcript</h3>
+          {#if whisper && !whisper.found}
+            <div class="small">{whisper.message}</div>
+          {:else if whisper && !whisper.model_found}
+            <div class="small">{whisper.message}</div>
+            <button class="small" onclick={pickWhisperModel}>Choose model…</button>
+          {:else}
+            <button class="small" onclick={transcribe} disabled={transcribing}>{transcribing ? "Transcribing…" : "Transcribe track"}</button>
+          {/if}
+          {#if segments.length && segmentsTrack === activeTrack()?.id}
+            <div class="segs">
+              {#each segments as s (s.start)}
+                <button class="seg" onclick={() => seekSeg(s)} title="Play from here"><b>{fmtTime(s.start)}</b> {s.text}</button>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}      <FxPanel track={activeTrack()} {ab} {lufs} hasSelection={hasRange() && selection?.trackId === activeTrack()?.id}
         onchange={changeFx} onlearn={learnNoise} onab={() => { ab = !ab; lufs = null; liveFx(); }} onmeasure={measure} />
       <ObsPanel {settings} onRecordingReady={importObs} onstatus={(s) => (obs = s)} onstate={onObsState} />
       {#if project.tracks.some((t) => t.video)}
@@ -918,6 +1080,9 @@
             <option value="">System default</option>
             {#each outputs as d}<option value={d.id}>{d.friendly_name} · {d.host}</option>{/each}
           </select>
+          {#if virtualOutputs.length}
+            <div class="virthint">🔀 Virtual audio device detected ({virtualOutputs.map((d) => d.friendly_name).join(" · ")}). Choose it here as the output, then select the same device as the microphone in OBS / Discord / Zoom to feed them StreamWave playback.</div>
+          {/if}
           <label for="lat">Latency</label>
           <div class="seg" id="lat">
             {#each [["LowLatency", "Low latency"], ["Balanced", "Balanced"], ["Safe", "Safe"]] as [v, n]}
@@ -931,6 +1096,25 @@
           <label class="chk"><input type="checkbox" checked={settings.update_auto_check ?? true} onchange={(e) => patchSettings({ update_auto_check: e.currentTarget.checked })} /> Check for updates at startup (once a day)</label>
           <button class="aboutlink" onclick={() => (showAbout = true)}>ℹ About StreamWave · ☕ Support the developer</button>
           <label class="chk"><input type="checkbox" bind:checked={settings.auto_backoff} onchange={() => setLatency(settings.latency)} /> Auto-switch to safer latency on dropouts</label>
+          <label class="chk"><input type="checkbox" checked={settings.safety_track ?? false} onchange={(e) => { settings.safety_track = e.currentTarget.checked; api.setSafety(e.currentTarget.checked); }} /> Safety track: also save a −12 dB copy of every recording</label>
+          <label class="chk"><input type="checkbox" checked={!!settings.voice_trigger} onchange={(e) => setVoiceTrigger(e.currentTarget.checked)} /> Voice trigger: start/stop recording by input level</label>
+          {#if settings.voice_trigger}
+            <div class="vtrow">
+              <label for="vtthr">Threshold {settings.voice_trigger.threshold_db} dB</label>
+              <input id="vtthr" type="number" min="-60" max="0" step="1" bind:value={settings.voice_trigger.threshold_db} onchange={() => setVoiceTrigger(true)} />
+              <label for="vthold">Hold {settings.voice_trigger.hold_ms} ms</label>
+              <input id="vthold" type="number" min="50" max="5000" step="50" bind:value={settings.voice_trigger.hold_ms} onchange={() => setVoiceTrigger(true)} />
+            </div>
+            <div class="small">Starts when the input stays above the threshold, stops ~1.5 s after it drops back below.</div>
+          {/if}
+          <label for="blufs">Batch export loudness target: {batchLufs} LUFS</label>
+          <select id="blufs" bind:value={batchLufs}>
+            <option value={-14}>-14 LUFS · Spotify / YouTube / streaming</option>
+            <option value={-16}>-16 LUFS · Podcast / Apple Podcasts</option>
+            <option value={-23}>-23 LUFS · Broadcast (EBU R128)</option>
+          </select>
+          <label for="wmodel">Whisper model (ggml .bin, for transcription)</label>
+          <div class="row2"><input id="wmodel" bind:value={settings.whisper_model} placeholder="auto-detect next to the app" onchange={() => api.saveSettings(settings)} /><button onclick={pickWhisperModel}>Browse…</button></div>
         </div>
       {/if}
     </aside>
@@ -969,6 +1153,11 @@
   .small { font-size: 11px; } button.small { padding: 3px 8px; }
   .rec-banner { border-color: var(--warn); } .row2 { display: flex; gap: 8px; margin-top: 8px; } .row2 button { flex: 1; }
   .hint2 { text-align: center; padding: 6px; }
+  .mixbar { display: flex; gap: 8px; align-items: center; }
+  .virthint { background: #19d3b012; border: 1px solid #19d3b044; border-radius: 8px; padding: 8px; font-size: 11px; color: var(--muted); }
+  .segs { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+  .seg { text-align: left; font-size: 12px; padding: 4px 6px; background: transparent; border: none; border-radius: 6px; }
+  .seg:hover { background: var(--panel2); } .seg b { color: var(--accent); margin-right: 6px; font-variant-numeric: tabular-nums; }
   .track { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
   .thead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   .play { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
@@ -988,8 +1177,11 @@
   .modal { max-width: 560px; max-height: 80vh; overflow: auto; } .modal p { margin: 6px 0; white-space: pre-wrap; }
   .tag.obs { background: #8b7bff22; color: #a99cff; } .tag.recovered { background: #ffb02022; color: var(--warn); }
   .x { margin-left: auto; background: transparent; border: none; color: var(--muted); }
+  .trimbtn { background: var(--accent); color: #002; border-color: var(--accent); }
   .seg { display: flex; gap: 4px; } .seg button { flex: 1; padding: 6px 4px; font-size: 12px; } .seg .sel { background: var(--accent); color: #002; border-color: var(--accent); }
   .chk { display: flex; gap: 8px; align-items: center; } .chk input { width: auto; }
+  .vtrow { display: grid; grid-template-columns: 1fr 70px; gap: 6px; align-items: center; font-size: 12px; }
+  .vtrow label { margin: 0; }
   .toasts { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; }
   .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 9px 14px; border-radius: 8px; font-size: 13px; }
   .toast.warn { border-left-color: var(--warn); } .toast.err { border-left-color: var(--rec); }
