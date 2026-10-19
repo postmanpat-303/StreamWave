@@ -4,7 +4,8 @@
 
 export interface Source { path: string; name: string; duration: number; sampleRate: number; channels: number; peaks: number[]; }
 /** seconds inside the source file; `split` = a deliberate clip boundary before this clip (Split/Join) */
-export interface Clip { src: string; start: number; end: number; split?: boolean; }
+export interface Clip { src: string; start: number; end: number; split?: boolean; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; }
+export type ClipProps = { gain_db?: number; fade_in_ms?: number; fade_out_ms?: number };
 /** Text label on a label track (t1 > t0 for a range label). */
 export interface Label { id: number; t0: number; t1: number; text: string; }
 export type SpecScale = "log" | "linear";
@@ -69,13 +70,16 @@ export function insertAt(t: EditTrack, at: number, clips: Clip[]): EditTrack {
 }
 
 const tidy = (c: Clip, first: boolean): Clip => { const { split, ...rest } = c; return split && !first ? { ...rest, split } : rest; };
-/** Re-join adjacent clips that are contiguous in the same source (keeps the model tidy after undoable splits). */
+/** Re-join adjacent clips that are contiguous in the same source with identical gain/fades
+ * (keeps the model tidy after undoable splits; clips with different props or deliberate split boundaries stay separate). */
 function merge(clips: Clip[]): Clip[] {
+  const sameProps = (a: Clip, b: Clip) =>
+    (a.gain_db ?? 0) === (b.gain_db ?? 0) && (a.fade_in_ms ?? 0) === (b.fade_in_ms ?? 0) && (a.fade_out_ms ?? 0) === (b.fade_out_ms ?? 0);
   const out: Clip[] = [];
   for (const c of clips) {
     if (clipLen(c) < EPS) continue;
     const p = out[out.length - 1];
-    if (p && !c.split && p.src === c.src && Math.abs(p.end - c.start) < EPS) out[out.length - 1] = { ...p, end: c.end };
+    if (p && !c.split && p.src === c.src && Math.abs(p.end - c.start) < EPS && sameProps(p, c)) out[out.length - 1] = { ...p, end: c.end };
     else out.push(tidy(c, out.length === 0));
   }
   return out;
@@ -92,9 +96,30 @@ export function copy(p: Project, sel: Selection): Clip[] {
   const t = p.tracks.find((x) => x.id === sel.trackId); return t ? extract(t, sel.a, sel.b) : [];
 }
 export function del(p: Project, sel: Selection): Project { return mapTrack(p, sel.trackId, (t) => removeRange(t, sel.a, sel.b)); }
+
+/** Remove many regions in one edit (e.g. auto-trim silences). Regions are [start,end] track-time seconds. */
+export function removeRegions(p: Project, trackId: number, regions: [number, number][]): Project {
+    if (!regions.length) return p;
+    return mapTrack(p, trackId, (t) => {
+        let clips = t.clips;
+        // remove back-to-front so earlier positions stay valid
+        for (const [a, b] of [...regions].sort((x, y) => y[0] - x[0])) clips = removeRange({ ...t, clips }, a, b).clips;
+        return { ...t, clips };
+    });
+}
 /** Paste replaces the selection (if any) and inserts at its start. */
 export function paste(p: Project, sel: Selection, clips: Clip[]): Project {
   return mapTrack(p, sel.trackId, (t) => insertAt(removeRange(t, sel.a, sel.b), Math.min(sel.a, sel.b), clips));
+}
+
+/** Set gain/fades on every clip overlapping the selection (single undo step). */
+export function applyClipProps(p: Project, sel: Selection, props: ClipProps): Project {
+  const t = p.tracks.find((x) => x.id === sel.trackId); if (!t) return p;
+  return mapTrack(p, sel.trackId, (t) => {
+    const { before, inside, after } = partition(t.clips, sel.a, sel.b);
+    if (!inside.length) return t;
+    return { ...t, clips: merge([...before, ...inside.map((c) => ({ ...c, ...props })), ...after]) };
+  });
 }
 
 /** Replace a track's effect chain (parameters only; audio is never baked). */

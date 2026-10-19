@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addMarker, removeMarker, nextMarker, setFx, moveFx, cut, copy, del, paste, History, trackLen, extract, trackPeaks, type Project, type Source } from "./editModel";
+import { addMarker, removeMarker, nextMarker, setFx, moveFx, cut, copy, del, paste, removeRegions, applyClipProps, History, trackLen, extract, trackPeaks, type Project, type Source } from "./editModel";
 
 const P = (): Project => ({ tracks: [{ id: 1, name: "t", kind: "mic", clips: [{ src: "a.wav", start: 0, end: 10 }] }] });
 const T = (p: Project) => p.tracks[0];
@@ -18,6 +18,26 @@ describe("edit model", () => {
     const { project, clipboard } = cut(P(), { trackId: 1, a: 2, b: 5 });
     const back = paste(project, { trackId: 1, a: 2, b: 2 }, clipboard);
     expect(T(back).clips).toEqual(T(P()).clips);
+  });
+  it("removeRegions trims many silences in one edit and merges the rest", () => {
+    const p = removeRegions(P(), 1, [[2, 3], [5, 6]]);
+    expect(trackLen(T(p))).toBeCloseTo(8);
+    expect(T(p).clips).toEqual([{ src: "a.wav", start: 0, end: 2 }, { src: "a.wav", start: 3, end: 5 }, { src: "a.wav", start: 6, end: 10 }]);
+    const p0 = P();
+    const q = removeRegions(p0, 1, []);
+    expect(q).toBe(p0);
+  });
+  it("applyClipProps sets gain/fades on the selection only", () => {
+    const p = applyClipProps(P(), { trackId: 1, a: 2, b: 5 }, { gain_db: -6, fade_in_ms: 100, fade_out_ms: 200 });
+    expect(T(p).clips).toEqual([{ src: "a.wav", start: 0, end: 2 }, { src: "a.wav", start: 2, end: 5, gain_db: -6, fade_in_ms: 100, fade_out_ms: 200 }, { src: "a.wav", start: 5, end: 10 }]);
+    expect(T(P()).clips[0].gain_db).toBeUndefined(); // originals untouched
+  });
+  it("clips with different gain/fades are not merged, equal ones are", () => {
+    const p = applyClipProps(P(), { trackId: 1, a: 0, b: 5 }, { gain_db: -6 });
+    const q = applyClipProps(p, { trackId: 1, a: 5, b: 10 }, { gain_db: -6 });
+    expect(T(q).clips).toHaveLength(1); // same props -> merged back
+    const r = applyClipProps(p, { trackId: 1, a: 5, b: 10 }, { gain_db: -12 });
+    expect(T(r).clips).toHaveLength(2); // different gain -> stays split
   });
   it("paste replaces the selection", () => {
     const p = paste(P(), { trackId: 1, a: 1, b: 4 }, [{ src: "b.wav", start: 0, end: 1 }]);
@@ -107,7 +127,7 @@ const M = (): Project => ({ tracks: [
   { id: 2, name: "b", kind: "mic", clips: [{ src: "b.wav", start: 0, end: 10 }] },
   { id: 3, name: "Labels", kind: "labels", clips: [], labels: [{ id: 9, t0: 1, t1: 1, text: "one" }, { id: 10, t0: 3, t1: 4, text: "mid" }, { id: 11, t0: 6, t1: 8, text: "late" }] },
   { id: 4, name: "c", kind: "mic", clips: [{ src: "c.wav", start: 0, end: 10 }] },
-] });
+]} );
 const L = (p: Project, id: number) => p.tracks.find((t) => t.id === id)!;
 
 describe("multi-track selection", () => {
