@@ -127,7 +127,7 @@ const M = (): Project => ({ tracks: [
   { id: 2, name: "b", kind: "mic", clips: [{ src: "b.wav", start: 0, end: 10 }] },
   { id: 3, name: "Labels", kind: "labels", clips: [], labels: [{ id: 9, t0: 1, t1: 1, text: "one" }, { id: 10, t0: 3, t1: 4, text: "mid" }, { id: 11, t0: 6, t1: 8, text: "late" }] },
   { id: 4, name: "c", kind: "mic", clips: [{ src: "c.wav", start: 0, end: 10 }] },
-]} );
+] });
 const L = (p: Project, id: number) => p.tracks.find((t) => t.id === id)!;
 
 describe("multi-track selection", () => {
