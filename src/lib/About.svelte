@@ -43,8 +43,8 @@
   .veil { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 120; }
   .card { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 26px; width: min(440px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
   .logo { border-radius: 28px; box-shadow: 0 12px 40px rgba(255,122,26,.35); margin-bottom: 6px; }
-  h2 { margin: 0; font-size: 26px; }
-  .ver { color: var(--muted); font-size: 13px; }
+  h2 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+  .ver { color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: .06em; background: var(--inset-bg); box-shadow: var(--inset-shadow); border-radius: 6px; padding: 2px 10px; }
   .by { margin: 4px 0 10px; }
   .coffee { width: 100%; padding: 12px 18px; font-size: 16px; font-weight: 700; border: 0; border-radius: 999px; background: linear-gradient(90deg, #ffb347, #ff7a1a); color: #1a0f05; cursor: pointer; box-shadow: 0 6px 24px rgba(255,122,26,.4); }
   .coffee:hover { filter: brightness(1.08); }

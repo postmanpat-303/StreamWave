@@ -128,12 +128,12 @@
   {/if}
 {/if}
 <style>
-  .ctxmenu { position: fixed; z-index: 100; min-width: 230px; max-width: 340px; padding: 5px; background: #1b2230f5; border: 1px solid #36425a; border-radius: 10px;
-    box-shadow: 0 12px 32px #000a, 0 0 0 1px #0004; backdrop-filter: blur(6px); outline: none; font-size: 13px;
+  .ctxmenu { position: fixed; z-index: 100; min-width: 230px; max-width: 340px; padding: 5px; background: linear-gradient(180deg, #2a2c31f7, #1d1f22f7); border: 1px solid var(--line-dark); border-radius: 9px;
+    box-shadow: 0 12px 32px #000a, 0 1px 0 #ffffff12 inset; backdrop-filter: blur(6px); outline: none; font-size: 13px;
     overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; }
   .ctxmenu.sub { z-index: 101; }
-  .it { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px 6px 4px; background: none; border: 0; border-radius: 6px; text-align: left; color: var(--text); cursor: default; }
-  .it.act:not(.dis), .it.open:not(.dis), .it:focus-visible:not(.dis) { background: rgb(var(--accent-rgb) / 0.15); outline: none; }
+  .it { box-shadow: none; display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px 6px 4px; background: none; border: 0; border-radius: 6px; text-align: left; color: var(--text); cursor: default; }
+  .it.act:not(.dis), .it.open:not(.dis), .it:focus-visible:not(.dis) { background: rgb(var(--accent-rgb) / 0.16); box-shadow: inset 2px 0 0 var(--accent); outline: none; }
   .it.act:not(.dis) .lb, .it.open .lb { color: #fff; }
   .it.dis { color: #ffffff44; } .it:focus { outline: none; }
   .it.danger:not(.dis) .lb { color: #ff8095; }

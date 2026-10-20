@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dropdown from "./ui/Dropdown.svelte";
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import { api, type ExportOptions, type FfmpegInfo } from "./api";
@@ -40,10 +41,9 @@
 <div class="panel">
   <div class="hdr"><h3>Export · {trackName}</h3><button class="x" onclick={onclose}>✕</button></div>
   {#if ff && !ff.found}<div class="warn">{ff.message}</div>{/if}
-  <label for="ef">Format</label>
-  <select id="ef" bind:value={fmt}>
+  <Dropdown caption="Format" id="ef" bind:value={fmt}>
     {#each FORMATS as x}<option value={x.id} disabled={x.ff && ff !== null && !ff.found}>{x.name}</option>{/each}
-  </select>
+  </Dropdown>
   <div class="row">
     <div><label for="er">Sample rate</label>
       <select id="er" bind:value={rate}><option value={null}>Same as source</option>{#each [8000, 16000, 22050, 32000, 44100, 48000, 96000] as r}<option value={r}>{r / 1000} kHz</option>{/each}</select></div>

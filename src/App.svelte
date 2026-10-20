@@ -5,6 +5,7 @@
   import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import * as E from "./lib/editModel";
   import Meter from "./lib/Meter.svelte";
+  import Dropdown from "./lib/ui/Dropdown.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
@@ -1044,9 +1045,9 @@
     </select>
     <button onclick={() => saveProject(false)} title="Save (Ctrl+S)">💾</button>
     <div class="devsel">
-      <select value={engine?.input_id ?? settings.input_device ?? ""} onchange={(e) => { setInput(e.currentTarget.value); e.currentTarget.blur(); }} title="Microphone">
+      <Dropdown caption="Input device" value={engine?.input_id ?? settings.input_device ?? ""} onchange={(e) => { setInput(e.currentTarget.value); e.currentTarget.blur(); }} title="Microphone">
         {#each inputs as d}<option value={d.id}>🎙 {d.friendly_name}{d.is_default ? " (default)" : ""}</option>{/each}
-      </select>
+      </Dropdown>
     </div>
     <button onclick={() => run("undo")} disabled={!canUndo} title="Undo (Ctrl+Z)">↶</button>
     <button onclick={() => run("redo")} disabled={!canRedo} title="Redo (Ctrl+Y)">↷</button>
@@ -1274,13 +1275,13 @@
   aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
   .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
   .recpanel { display: flex; gap: 24px; align-items: center; background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 20px; }
-  .bigrec { width: 110px; height: 110px; border-radius: 50%; border: 4px solid var(--line); background: radial-gradient(circle at 35% 30%, #ff6b84, var(--rec)); flex: none; transition: transform .1s, box-shadow .2s; }
-  .bigrec:hover { transform: scale(1.04); border-color: #fff3; }
+  .bigrec { width: 110px; height: 110px; border-radius: 50%; border: 6px solid #15161a; background: radial-gradient(circle at 35% 30%, #ff7b8f, var(--rec) 55%, #a8202c); box-shadow: 0 0 0 3px #3a3d43, 0 0 0 4px #0009, 0 6px 14px #000a, 0 2px 0 #ffffff33 inset; flex: none; transition: transform .1s, box-shadow .2s; }
+  .bigrec:hover { transform: scale(1.03); }
   .bigrec.on { animation: pulse 1.4s infinite; }
   .bigrec .ico { font-size: 42px; color: #fff; }
   @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgb(var(--rec-rgb) / 0.53); } 50% { box-shadow: 0 0 0 18px rgb(var(--rec-rgb) / 0.00); } }
   .recinfo { flex: 1; }
-  .time { font-size: 38px; font-variant-numeric: tabular-nums; font-weight: 300; }
+  .time { display: inline-block; font-size: 34px; font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: .04em; color: var(--accent); text-shadow: 0 0 10px rgb(var(--accent-rgb) / .45); background: var(--inset-bg); box-shadow: var(--inset-shadow); border-radius: 8px; padding: 2px 14px; margin-bottom: 6px; }
   .hint, .small { color: var(--muted); font-size: 12px; } .hint { margin-bottom: 8px; }
   .tracks { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
   .empty { color: var(--muted); text-align: center; padding: 60px; border: 2px dashed var(--line); border-radius: 12px; }
@@ -1310,7 +1311,7 @@
   .track { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 10px 12px; }
   .thead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   .play { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
-  .tname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+  .tname { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
   .tag { font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 10px; background: rgb(var(--accent-rgb) / 0.13); color: var(--accent); }
   .track.multi { box-shadow: inset 3px 0 0 var(--blue); }
   .vbtn { padding: 1px 7px; border-radius: 10px; background: #ffffff0d; border: 1px solid #ffffff1a; cursor: pointer; } .vbtn.on { border-color: var(--accent); color: var(--accent); }
@@ -1332,6 +1333,6 @@
   .vtrow { display: grid; grid-template-columns: 1fr 70px; gap: 6px; align-items: center; font-size: 12px; }
   .vtrow label { margin: 0; }
   .toasts { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; }
-  .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+  .toast { background: linear-gradient(180deg, #2b2e33, #222428); border: 1px solid var(--line-dark); box-shadow: 0 6px 20px #000a; border-left: 4px solid var(--accent); padding: 9px 14px; border-radius: 8px; font-size: 13px; }
   .toast.warn { border-left-color: var(--warn); } .toast.err { border-left-color: var(--rec); }
 </style>
