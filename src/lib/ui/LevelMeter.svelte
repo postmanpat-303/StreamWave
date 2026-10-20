@@ -1,10 +1,9 @@
 <script lang="ts">
   /** Vertical gradient level meter (teal → yellow → red) for one or two channels, with peak hold and a dB scale. Values are linear amplitude. */
   import { ampPos, dbPos } from "./meter";
-  let { left = 0, right = undefined, holdL = 0, holdR = 0, height = 110, label = "" }:
-    { left?: number; right?: number; holdL?: number; holdR?: number; height?: number; label?: string } = $props();
+  let { left = 0, right = undefined, holdL = 0, holdR = 0, height = 110, label = "", marks = [0, -6, -12, -24, -40, -60] }:
+    { left?: number; right?: number; holdL?: number; holdR?: number; height?: number; label?: string; marks?: number[] } = $props();
   const chans = $derived(right === undefined ? [[left, holdL]] : [[left, holdL], [right, holdR]]);
-  const marks = [0, -6, -12, -24, -40, -60];
 </script>
 <div class="lm" style="--h:{height}px">
   <div class="body">

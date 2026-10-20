@@ -6,6 +6,8 @@
   import * as E from "./lib/editModel";
   import Meter from "./lib/Meter.svelte";
   import Dropdown from "./lib/ui/Dropdown.svelte";
+  import Ruler from "./lib/ui/Ruler.svelte";
+  import Preview from "./lib/ui/Preview.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
@@ -264,7 +266,25 @@
   function syncScroll(e: Event) {
     const x = (e.currentTarget as HTMLElement).scrollLeft;
     for (const el of document.querySelectorAll<HTMLElement>(".tracks .scroll")) if (el !== e.currentTarget && el.scrollLeft !== x) el.scrollLeft = x;
+    updateViewWin();
   }
+  // ---- the part of the timeline the lanes currently show (for the preview's viewport box) + zoom to selection ----
+  let viewWin = $state<{ a: number; b: number } | null>(null);
+  function updateViewWin() {
+    const el = document.querySelector<HTMLElement>(".tracks .lane .scroll"); if (!el || !timelineLen) { viewWin = null; return; }
+    const px = (el.clientWidth * zoom) / timelineLen; if (!px) return;
+    viewWin = { a: el.scrollLeft / px, b: (el.scrollLeft + el.clientWidth) / px };
+  }
+  $effect(() => { void zoom; void timelineLen; void project.tracks.length; requestAnimationFrame(updateViewWin); });
+  async function zoomTo(a: number, b: number) {
+    if (!(b > a) || !timelineLen) return;
+    setZoom((timelineLen / (b - a)) * 0.9); await tick();
+    const el = document.querySelector<HTMLElement>(".tracks .lane .scroll"); if (!el) return;
+    const px = (el.clientWidth * zoom) / timelineLen, x = Math.max(0, a * px - el.clientWidth * 0.05);
+    for (const s of document.querySelectorAll<HTMLElement>(".tracks .scroll")) s.scrollLeft = x;
+    updateViewWin();
+  }
+  const previewTrack = $derived.by(() => { const t = activeTrack(); return t && !E.isLabelTrack(t) && t.clips.some((c) => !c.gap) ? t : null; });
 
   // ---- label tracks ----
   let focusLabel = $state<number | null>(null);
@@ -815,6 +835,17 @@
     } catch (e) { toast(`Transcription failed: ${e}`, "err"); }
     transcribing = false;
   }
+  /** Timeline position being played (timeline seconds), or null when nothing plays. */
+  const playhead = $derived(level.playing && playingId !== null ? playOffset + level.play_secs : null);
+  /** Ruler click/drag: move the edit cursor; when a whole track is playing, continue playback from there on release. */
+  async function rulerSeek(at: number, final: boolean) {
+    const t = activeTrack(); if (!t) return;
+    selection = { trackId: t.id, a: at, b: at };
+    if (!final || !level.playing || playingId === null || playingId < 0 || playRange) return;
+    const pt = project.tracks.find((x) => x.id === playingId); if (!pt || !pt.clips.length) return;
+    await api.stopPlayback(); playingId = pt.id; playOffset = 0; playRange = null;
+    try { await api.playClips(clipsFor(pt.clips), fxFor(pt), Math.min(at, E.trackLen(pt))); } catch (e) { toast(String(e), "err"); }
+  }
   async function seekSeg(s: { start: number }) {
     const t = activeTrack(); if (!t || !t.clips.length) return;
     if (level.playing) await api.stopPlayback();
@@ -1075,12 +1106,29 @@
         </div>
       </div>
 
+      {#if previewTrack}
+        {@const pt = previewTrack}
+        {@const psel = selection?.trackId === pt.id ? selection : null}
+        <Preview name={pt.name} peaks={E.trackPeaks(pt, sources, 900)} duration={E.trackLen(pt)}
+          selection={psel ? { a: psel.a, b: psel.b } : null} cursor={psel?.a ?? null}
+          playhead={playingId === pt.id || playingId === -1 ? playhead : null} view={viewWin} zoomed={zoom > 1.001}
+          color={pt.kind === "obs" ? "#9b74ff" : pt.kind === "recovered" ? "#ffd04a" : "#2ec4b6"}
+          onseek={(at) => { selection = { trackId: pt.id, a: at, b: at }; rulerSeek(at, true); }}
+          onselect={(a, b) => (selection = { trackId: pt.id, a, b })}
+          onzoomsel={() => { if (psel) zoomTo(psel.a, psel.b); }} onfit={() => setZoom(1)} />
+      {/if}
+
       <div class="tracks" role="region" aria-label="Tracks" oncontextmenu={openEmptyMenu} onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } }}>
         {#if project.tracks.length}
           <div class="mixbar">
             <button class="small" onclick={playMix} title="Render every track with its effects and play the combined mix">▶ Mix all {project.tracks.length} track{project.tracks.length > 1 ? "s" : ""}</button>
             {#if playingId === -1 && level.playing}<button class="small" onclick={() => run("stop")}>■ Stop mix</button>{/if}
           </div>
+        {/if}
+        {#if project.tracks.length}
+          <Ruler duration={timelineLen} {zoom} {playhead} cursor={selection?.a ?? null}
+            selection={selection && selection.b - selection.a > 0.0005 ? selection : null} markers={project.markers ?? []}
+            onscroll={syncScroll} onseek={rulerSeek} />
         {/if}
         {#if project.tracks.length === 0}
           <div class="empty">No tracks yet. Hit the big red button, import a file, or record in OBS.</div>
