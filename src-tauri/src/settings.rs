@@ -46,6 +46,8 @@ pub struct Settings {
     pub update_last_check: Option<i64>,
     /// version the user chose "Skip this version" for
     pub update_skip_version: Option<String>,
+    /// keep the playhead in view while playing / recording (View > Follow Playhead, F)
+    #[serde(default = "dtrue")] pub follow_playhead: bool,
 }
 fn dtrue() -> bool { true }
 fn d30() -> f32 { 30.0 }
@@ -57,7 +59,7 @@ impl Settings {
         self.recent_projects.truncate(10);
     }
     pub fn with_defaults() -> Self {
-        Self { obs_host: "localhost".into(), obs_port: 4455, auto_backoff: true, obs_auto_import: true, preroll_secs: 30.0, update_auto_check: true, ..Default::default() }
+        Self { obs_host: "localhost".into(), obs_port: 4455, auto_backoff: true, obs_auto_import: true, preroll_secs: 30.0, update_auto_check: true, follow_playhead: true, ..Default::default() }
     }
     fn path(dir: &PathBuf) -> PathBuf { dir.join("settings.json") }
     pub fn load(dir: &PathBuf) -> Self {
@@ -88,5 +90,15 @@ mod tests {
         let off: Settings = serde_json::from_str(r#"{"update_auto_check":false,"update_skip_version":"0.6.1"}"#).unwrap();
         assert!(!off.update_auto_check);
         assert_eq!(off.update_skip_version.as_deref(), Some("0.6.1"));
+    }
+    #[test]
+    fn follow_playhead_defaults_on_and_persists_off() {
+        let old: Settings = serde_json::from_str(r#"{"obs_host":"localhost","obs_port":4455}"#).unwrap();
+        assert!(old.follow_playhead, "settings files from 0.11.0 and earlier get Follow playhead ON");
+        assert!(Settings::with_defaults().follow_playhead);
+        let off: Settings = serde_json::from_str(r#"{"follow_playhead":false}"#).unwrap();
+        assert!(!off.follow_playhead);
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&off).unwrap()).unwrap();
+        assert!(!back.follow_playhead);
     }
 }

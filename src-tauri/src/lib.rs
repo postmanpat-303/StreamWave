@@ -1,4 +1,5 @@
 mod audio;
+mod perf;
 mod obs;
 mod render;
 mod fx;
@@ -73,44 +74,82 @@ async fn play_file(st: State<'_, AppState>, path: String, start: Option<f64>) ->
     st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: std::sync::Arc::new(d), slots: vec![], gains: vec![], start_secs: start.unwrap_or(0.0) }))
 }
 
+/// Dry render + measured gains for a track, from the PlayCache when nothing changed since the last time.
+fn prepare_track(app: &tauri::AppHandle, clips: &[render::ClipSpec], slots: &[fx::Slot]) -> anyhow::Result<(std::sync::Arc<waveform::Decoded>, Vec<Option<f32>>)> {
+    let (cache, pc) = (app.state::<render::DecodeCache>(), app.state::<render::PlayCache>());
+    let key = render::key_of(clips);
+    let d = pc.dry(key, || render::render(&cache, clips))?;
+    perf::mark("play_clips: dry rendered");
+    let gains = if slots.iter().any(|s| !s.bypass && s.fx.is_global()) {
+        pc.gains(render::key_of(&(key, slots)), || fx::resolve_gains(&d, slots, None).unwrap_or_else(|| vec![None; slots.len()]))
+    } else { vec![None; slots.len()] };
+    Ok((d, gains))
+}
+
 /// Start real-time playback of the edited clips; effects run live and can be changed with `update_fx`.
+/// Unchanged audio is not re-rendered or re-measured (PlayCache), and the output stream stays open, so Play is quick.
 #[tauri::command]
-async fn play_clips(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>, fx: Option<Vec<fx::Slot>>, start: Option<f64>) -> Result<(), String> {
-    let d = render::render(&cache, &clips).map_err(|e| e.to_string())?;
+async fn play_clips(app: tauri::AppHandle, st: State<'_, AppState>, clips: Vec<render::ClipSpec>, fx: Option<Vec<fx::Slot>>, start: Option<f64>) -> Result<(), String> {
+    perf::mark("play_clips: command in");
     let slots = fx.unwrap_or_default();
-    let (d, slots, gains) = tauri::async_runtime::spawn_blocking(move || {
-        let g = fx::resolve_gains(&d, &slots, None).unwrap_or_else(|| vec![None; slots.len()]);
-        (d, slots, g)
-    }).await.map_err(|e| e.to_string())?;
-    st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: std::sync::Arc::new(d), slots, gains, start_secs: start.unwrap_or(0.0) }))
+    let (d, slots, gains) = tauri::async_runtime::spawn_blocking(move || prepare_track(&app, &clips, &slots).map(|(d, g)| (d, slots, g)))
+        .await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())?;
+    perf::mark("play_clips: gains resolved");
+    st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: d, slots, gains, start_secs: start.unwrap_or(0.0) }))
+}
+/// Render (and measure) the active track in the background after loads/edits, so the next Play doesn't wait for it.
+#[tauri::command]
+async fn prerender_clips(app: tauri::AppHandle, clips: Vec<render::ClipSpec>, fx: Option<Vec<fx::Slot>>) -> Result<(), String> {
+    if clips.is_empty() { return Ok(()) }
+    tauri::async_runtime::spawn_blocking(move || prepare_track(&app, &clips, &fx.unwrap_or_default()).map(|_| ()))
+        .await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
 }
 
 /// Render every track (with its effects) and play the full mix.
 #[tauri::command]
-async fn play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, tracks: Vec<render::TrackSpec>, start: Option<f64>) -> Result<(), String> {
-    let d = render::render_mix(&cache, &tracks).map_err(|e| e.to_string())?;
-    st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: std::sync::Arc::new(d), slots: vec![], gains: vec![], start_secs: start.unwrap_or(0.0) }))
+async fn play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, pc: State<'_, render::PlayCache>, tracks: Vec<render::TrackSpec>, start: Option<f64>) -> Result<(), String> {
+    perf::mark("play_mix: command in");
+    let d = pc.dry(render::key_of(&tracks[..]), || render::render_mix(&cache, &tracks)).map_err(|e| e.to_string())?;
+    perf::mark("play_mix: mix rendered");
+    st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: d, slots: vec![], gains: vec![], start_secs: start.unwrap_or(0.0) }))
 }
 /// Hand re-rendered dry audio to the running playback (no restart). Ok(false) = not playing or the format
 /// changed, so the app restarts playback instead.
-fn hand_over(st: &AppState, d: waveform::Decoded) -> Result<bool, String> {
+fn hand_over(st: &AppState, d: std::sync::Arc<waveform::Decoded>) -> Result<bool, String> {
     use std::sync::atomic::Ordering::Relaxed;
     let p = &st.audio.shared.play;
     if !(p.playing.load(Relaxed) || p.paused.load(Relaxed)) { return Ok(false) }
     if p.src_rate.load(Relaxed) != d.sample_rate as u64 || p.src_ch.load(Relaxed) != d.channels as u64 { return Ok(false) }
-    st.send(Cmd::UpdateDry(std::sync::Arc::new(d)))?; Ok(true)
+    st.send(Cmd::UpdateDry(d))?; Ok(true)
 }
 /// Clip effects changed while a track plays: re-render its clips and swap them in at the current position.
 #[tauri::command]
-async fn update_play_clips(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>) -> Result<bool, String> {
-    let d = render::render(&cache, &clips).map_err(|e| e.to_string())?;
+async fn update_play_clips(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, pc: State<'_, render::PlayCache>, clips: Vec<render::ClipSpec>) -> Result<bool, String> {
+    let d = pc.dry(render::key_of(&clips[..]), || render::render(&cache, &clips)).map_err(|e| e.to_string())?;
     hand_over(&st, d)
 }
 /// Same for "Mix all" playback.
 #[tauri::command]
-async fn update_play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, tracks: Vec<render::TrackSpec>) -> Result<bool, String> {
-    let d = render::render_mix(&cache, &tracks).map_err(|e| e.to_string())?;
+async fn update_play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, pc: State<'_, render::PlayCache>, tracks: Vec<render::TrackSpec>) -> Result<bool, String> {
+    let d = pc.dry(render::key_of(&tracks[..]), || render::render_mix(&cache, &tracks)).map_err(|e| e.to_string())?;
     hand_over(&st, d)
+}
+/// View > Follow Playhead check mark (kept in step when F or the transport toggle changes it).
+struct FollowMenu(tauri::menu::CheckMenuItem<tauri::Wry>);
+/// Persist "Follow playhead" and update the menu check mark.
+#[tauri::command]
+fn set_follow_playhead(app: tauri::AppHandle, st: State<AppState>, on: bool) -> Result<(), String> {
+    st.settings.lock().follow_playhead = on; st.save()?;
+    if let Some(m) = app.try_state::<FollowMenu>() { let _ = m.0.set_checked(on); }
+    Ok(())
+}
+/// Open the output stream ahead of the first Play (a project was loaded).
+#[tauri::command] fn prepare_playback(st: State<AppState>) -> Result<(), String> { st.send(Cmd::PrepareOutput) }
+/// The project is being replaced or closed: stop playback (with the de-click fade) and drop the old project's
+/// rendered and decoded audio so it doesn't linger in memory.
+#[tauri::command]
+fn release_project_audio(st: State<AppState>, cache: State<render::DecodeCache>, pc: State<render::PlayCache>) -> Result<(), String> {
+    st.send(Cmd::StopPlay)?; pc.clear(); cache.clear(); Ok(())
 }
 #[tauri::command] fn update_fx(st: State<AppState>, fx: Vec<fx::Slot>) -> Result<(), String> { st.send(Cmd::UpdateFx(fx)) }
 #[tauri::command] fn pause_playback(st: State<AppState>, pause: bool) -> Result<(), String> { st.send(Cmd::PausePlay(pause)) }
@@ -298,11 +337,18 @@ async fn export_clips(cache: State<'_, render::DecodeCache>, clips: Vec<render::
     render::write_wav(&d, std::path::Path::new(&path)).map_err(|e| e.to_string())?;
     Ok(path)
 }
-#[tauri::command] fn stop_playback(st: State<AppState>) -> Result<(), String> { st.send(Cmd::StopPlay) }
+#[tauri::command] fn stop_playback(st: State<AppState>) -> Result<(), String> { perf::mark("stop_playback: command in"); st.send(Cmd::StopPlay) }
+/// Latency tracing from the UI side (no-op unless `STREAMWAVE_PERF` is set). `at` = JS epoch ms.
+#[tauri::command] fn perf_mark(what: String, at: f64) { if perf::on() { perf::mark_at((at * 1000.0) as u64, &format!("ui: {what}")) } }
+#[tauri::command] fn perf_enabled() -> bool { perf::on() }
 
 #[tauri::command]
-async fn import_audio(path: String, buckets: Option<usize>) -> Result<waveform::Waveform, String> {
-    tauri::async_runtime::spawn_blocking(move || waveform::analyze(std::path::Path::new(&path), buckets.unwrap_or(4000)))
+async fn import_audio(app: tauri::AppHandle, path: String, buckets: Option<usize>) -> Result<waveform::Waveform, String> {
+    // decode through the playback cache: the first Play of a freshly opened project needs no decode
+    tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<waveform::Waveform> {
+        let d = app.state::<render::DecodeCache>().get(&path)?;
+        Ok(waveform::waveform_of(std::path::Path::new(&path), &d, buckets.unwrap_or(4000)))
+    })
         .await.map_err(|e| e.to_string())?.map_err(|e| format!("Could not import: {e}"))
 }
 
@@ -324,13 +370,16 @@ fn twt_arg(args: &[String]) -> Option<String> {
 }
 
 fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
-    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+    use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+    let follow_on = app.state::<AppState>().settings.lock().follow_playhead;
+    let follow = CheckMenuItem::with_id(app, "follow", "Follow Playhead  (F)", true, follow_on, None::<&str>)?;
     let it = |id: &str, text: &str, acc: Option<&str>| MenuItem::with_id(app, id, text, true, acc);
     let file = Submenu::with_items(app, "File", true, &[
         &it("new", "New Project", Some("CmdOrCtrl+N"))?,
         &it("open", "Open Project...", Some("CmdOrCtrl+O"))?,
         &it("save", "Save Project", Some("CmdOrCtrl+S"))?,
         &it("saveas", "Save Project As...", Some("CmdOrCtrl+Shift+S"))?,
+        &it("close", "Close Project", Some("CmdOrCtrl+W"))?,
         &PredefinedMenuItem::separator(app)?,
         &it("import", "Import Audio...", Some("CmdOrCtrl+I"))?,
         &it("importaup3", "Import Audacity Project...", None)?,
@@ -365,6 +414,8 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &it("toggleview", "Waveform / Spectrogram (selected tracks)", Some("CmdOrCtrl+Shift+G"))?,
         &it("zoomin", "Zoom In  (+)", None)?,
         &it("zoomout", "Zoom Out  (−)", None)?,
+        &PredefinedMenuItem::separator(app)?,
+        &follow,
     ])?;
     let transport = Submenu::with_items(app, "Transport", true, &[
         &it("playpause", "Play / Pause  (Space)", None)?,
@@ -381,6 +432,7 @@ fn build_menu(app: &mut tauri::App) -> tauri::Result<()> {
         &it("about", "About StreamWave", None)?,
     ])?;
     app.set_menu(Menu::with_items(app, &[&file, &edit, &view, &transport, &help])?)?;
+    app.manage(FollowMenu(follow));
     app.on_menu_event(|app, ev| { let _ = app.emit("menu", ev.id().0.clone()); });
     Ok(())
 }
@@ -417,6 +469,7 @@ pub fn run() {
             app.manage(AppState { audio, settings: Mutex::new(settings), config_dir, default_rec_dir });
             app.manage(Arc::new(obs::ObsState::default()));
             app.manage(render::DecodeCache::default());
+            app.manage(render::PlayCache::default());
             #[cfg(desktop)]
             app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
             build_menu(app)?;
@@ -453,7 +506,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, install_kind, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, update_play_clips, update_play_mix, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
+            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, update_play_clips, update_play_mix, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, perf_mark, perf_enabled, prepare_playback, release_project_audio, set_follow_playhead, prerender_clips, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())

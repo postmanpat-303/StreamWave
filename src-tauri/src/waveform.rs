@@ -78,13 +78,15 @@ pub fn peaks(d: &Decoded, buckets: usize) -> Vec<f32> {
     out
 }
 
-pub fn analyze(path: &Path, buckets: usize) -> anyhow::Result<Waveform> {
-    let d = decode_file(path)?;
-    Ok(Waveform {
+#[allow(dead_code)]
+pub fn analyze(path: &Path, buckets: usize) -> anyhow::Result<Waveform> { Ok(waveform_of(path, &decode_file(path)?, buckets)) }
+/// Overview of already-decoded audio (import decodes through the playback cache, so the first Play is warm).
+pub fn waveform_of(path: &Path, d: &Decoded, buckets: usize) -> Waveform {
+    Waveform {
         path: path.to_string_lossy().into(),
         name: path.file_name().map(|n| n.to_string_lossy().into()).unwrap_or_default(),
         sample_rate: d.sample_rate, channels: d.channels,
         duration_secs: (d.samples.len() / d.channels) as f64 / d.sample_rate as f64,
-        peaks: peaks(&d, buckets),
-    })
+        peaks: peaks(d, buckets),
+    }
 }
