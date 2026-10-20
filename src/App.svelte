@@ -8,6 +8,7 @@
   import Dropdown from "./lib/ui/Dropdown.svelte";
   import Ruler from "./lib/ui/Ruler.svelte";
   import Preview from "./lib/ui/Preview.svelte";
+  import EffectsWorkspace from "./lib/EffectsWorkspace.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
@@ -783,6 +784,24 @@
     const t = activeTrack(); if (!t) return;
     commit(label, E.setFx(hist.present, t.id, fx)); lufs = null; liveFx();
   }
+  // ---- workspaces: Settings (the classic right column) | Effects Layer. Pure view state; playback and project are untouched. ----
+  let workspace = $state<"settings" | "fx">("settings");
+  /** Clip under the edit cursor on the active track (its layers show in the Effects Layer workspace). */
+  const cursorClip = $derived.by(() => {
+    const t = activeTrack(); if (!t || E.isLabelTrack(t) || selection?.trackId !== t.id) return null;
+    const at = selection.a, qs = E.audioClips(t);
+    const q = qs.find((x) => at >= x.a && at < x.b) ?? (qs.length && Math.abs(at - qs[qs.length - 1].b) < 1e-6 ? qs[qs.length - 1] : undefined);
+    return q ? { t, q } : null;
+  });
+  function changeCursorClipFx(fx: FxSlot[], label: string) {
+    const c = cursorClip; if (!c) return;
+    commit(label, E.setClipFx(hist.present, c.t.id, c.q.index, fx)); liveDry();
+  }
+  /** Knob being dragged on a track effect: push the draft chain into the running playback only (history on release). */
+  function liveTrackDraft(chain: FxSlot[]) {
+    const t = activeTrack(); if (!t || !level.playing || playingId !== t.id) return;
+    api.updateFx(ab ? [] : activeChain(chain)).catch((e) => toast(String(e), "err"));
+  }
   async function learnNoise(slotId: number) {
     const t = activeTrack(); if (!t || !selection || !hasRange()) return;
     try {
@@ -1070,6 +1089,10 @@
 <div class="app">
   <header>
     <div class="brand"><img class="logo" src={logoUrl} alt="" width="22" height="22" /> Stream<b>Wave</b> <span class="proj">· {projName}{dirty ? " •" : ""}</span></div>
+    <div class="wsw" role="tablist" aria-label="Workspace">
+      <button role="tab" aria-selected={workspace === "settings"} onclick={() => (workspace = "settings")} title="Settings panel: selection, Studio Sound, transcript, effects rack, OBS">Settings</button>
+      <button role="tab" aria-selected={workspace === "fx"} onclick={() => (workspace = "fx")} title="Effects Layer workspace: every effect of the track and the clip under the cursor, with knobs">Effects Layer</button>
+    </div>
     <select class="recent" value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ""; e.currentTarget.blur(); if (v === "__open") openProject(); else if (v === "__new") newProject(); else if (v) openProject(v); }} title="Projects">
       <option value="">📁 Project</option><option value="__new">New project (Ctrl+N)</option><option value="__open">Open... (Ctrl+O)</option>
       {#each recentProjects as r}<option value={r}>{r.split(/[\\/]/).pop()}</option>{/each}
@@ -1085,10 +1108,10 @@
     <button onclick={importFile}>＋ Import</button>
     <button onclick={() => run("export")} disabled={!project.tracks.length} title="Export (Ctrl+E)">⇩ Export</button>
     <button onclick={batchExport} disabled={!project.tracks.length || batchBusy} title="Export every track as WAV at the loudness target set in Settings">⇩⇩ Batch</button>
-    <button onclick={() => (showSettings = !showSettings)}>⚙ Settings</button>
+    <button onclick={() => { if (workspace !== "settings") { workspace = "settings"; showSettings = true; } else showSettings = !showSettings; }}>⚙ Settings</button>
   </header>
 
-  <main>
+  <main class:fxws={workspace === "fx"}>
     <section class="left">
       <div class="recpanel">
         <button class="bigrec" class:on={recording} onclick={toggleRecord} title="Record (R)">
@@ -1210,7 +1233,15 @@
       </div>
     </section>
 
-    <aside>
+    {#if workspace === "fx"}
+      <aside class="fxaside">
+        <EffectsWorkspace trackName={activeTrack() && !E.isLabelTrack(activeTrack()!) ? activeTrack()!.name : null} chain={activeTrack()?.fx ?? []}
+          clip={cursorClip ? { name: clipName(cursorClip.q.clip), at: cursorClip.q.a, fx: cursorClip.q.clip.fx ?? [] } : null}
+          hasSelection={hasRange() && selection?.trackId === activeTrack()?.id}
+          ontrack={changeFx} ontracklive={liveTrackDraft} onclip={changeCursorClipFx} onlearn={learnNoise} />
+      </aside>
+    {/if}
+    <aside class:hidden={workspace === "fx"}>
       {#if selection && selection.trackId === activeTrack()?.id && hasRange()}
         <div class="panel">
           <h3>Selection {fmtTime(selection.a)}–{fmtTime(selection.b)}</h3>
@@ -1317,10 +1348,17 @@
   header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line-dark); background: linear-gradient(180deg, #2a2c31, #1d1f22); box-shadow: 0 1px 0 #ffffff0d inset, 0 3px 10px #0008; position: relative; z-index: 2; }
   .brand { font-size: 17px; margin-right: auto; } .brand b { color: var(--accent); } .aboutlink { margin-top: 10px; width: 100%; background: transparent; color: var(--accent); }
   .brand { display: flex; align-items: center; gap: 8px; } .logo { border-radius: 6px; }
-  .devsel { width: 320px; }
+  .devsel { flex: 0 1 300px; min-width: 150px; }
+  header > button, .wsw button { white-space: nowrap; flex: none; }
+  .brand { min-width: 0; white-space: nowrap; } .proj { overflow: hidden; text-overflow: ellipsis; max-width: 240px; min-width: 0; }
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; overflow: hidden; }
   .left { display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
-  aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+  aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; } aside.hidden { display: none; }
+  main.fxws { grid-template-columns: minmax(0, 1fr) minmax(420px, 46%); }
+  .fxaside { overflow: hidden; }
+  .wsw { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--inset-bg); box-shadow: var(--inset-shadow); }
+  .wsw button { border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: none; border-color: transparent; box-shadow: none; color: var(--muted); }
+  .wsw button[aria-selected="true"] { background: linear-gradient(180deg, #ffb658, var(--accent)); color: var(--accent-ink); box-shadow: 0 0 10px rgb(var(--accent-rgb) / .35); }
   .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
   .recpanel { display: flex; gap: 24px; align-items: center; background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 20px; }
   .bigrec { width: 110px; height: 110px; border-radius: 50%; border: 6px solid #15161a; background: radial-gradient(circle at 35% 30%, #ff7b8f, var(--rec) 55%, #a8202c); box-shadow: 0 0 0 3px #3a3d43, 0 0 0 4px #0009, 0 6px 14px #000a, 0 2px 0 #ffffff33 inset; flex: none; transition: transform .1s, box-shadow .2s; }

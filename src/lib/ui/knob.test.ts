@@ -54,3 +54,19 @@ describe("knob maths", () => {
     expect(readout(0.8, "")).toBe("0.80");
   });
 });
+
+import { litRange } from "./knob";
+describe("litRange", () => {
+  const bi = { min: -12, max: 12, step: 0.5 }, uni = { min: 0, max: 10, step: 0.1 };
+  it("lights bipolar knobs from the centre towards the value", () => {
+    expect(litRange(0, bi, 21)).toEqual([10, 10]);
+    expect(litRange(12, bi, 21)).toEqual([10, 20]);
+    expect(litRange(-12, bi, 21)).toEqual([0, 10]);
+    expect(litRange(-6, bi, 21)).toEqual([5, 10]);
+  });
+  it("lights unipolar knobs from the start, none at the minimum", () => {
+    expect(litRange(0, uni, 21)).toBeNull();
+    expect(litRange(10, uni, 21)).toEqual([0, 20]);
+    expect(litRange(5, uni, 21)).toEqual([0, 10]);
+  });
+});

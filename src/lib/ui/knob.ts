@@ -70,6 +70,16 @@ export function keyValue(key: string, v: number, r: KnobRange, shift = false, de
 /** How many of n tick dots are lit for a value (the first dot is lit from just above min). */
 export const litTicks = (v: number, r: KnobRange, n: number) => Math.round(toNorm(v, r) * (n - 1)) + (toNorm(v, r) > 0 ? 1 : 0);
 
+/** Lit tick indices [from, to] (inclusive), or null for none. Bipolar ranges (min < 0 < max, linear) light from the 0 tick
+ *  towards the value, like a pan/gain knob; others light from the start. */
+export function litRange(v: number, r: KnobRange, n: number): [number, number] | null {
+  if (r.min < 0 && r.max > 0 && !r.log) {
+    const c = Math.round(toNorm(0, r) * (n - 1)), i = Math.round(toNorm(v, r) * (n - 1));
+    return [Math.min(c, i), Math.max(c, i)];
+  }
+  const k = litTicks(v, r, n); return k > 0 ? [0, k - 1] : null;
+}
+
 /** Compact number for scale labels: 20, 400, 1.5k, 12k, 0.3, -12. */
 export function short(v: number): string {
   const a = Math.abs(v);

@@ -2,7 +2,7 @@
   /** Hardware-style rotary knob. Drag up/right (or wheel, arrows) to turn; Shift = fine; double-click or Delete = reset.
    *  `oninput` fires while turning, `onchange` once per gesture (pointer release, or ~350 ms after the last wheel/key step). */
   import { onDestroy } from "svelte";
-  import { angleOf, autoLog, dragTo, keyValue, litTicks, nudge, readout, scaleLabels, toNorm, type KnobRange } from "./knob";
+  import { angleOf, autoLog, dragTo, keyValue, litRange, nudge, readout, scaleLabels, toNorm, type KnobRange } from "./knob";
   let { value, min, max, step = 0, label = "", unit = "", def = undefined, size = 64, log = undefined, ticks = 21,
     scale = "ends", accent = "var(--accent)", disabled = false, format = undefined, oninput, onchange }: {
     value: number; min: number; max: number; step?: number; label?: string; unit?: string; def?: number; size?: number; log?: boolean; ticks?: number;
@@ -13,7 +13,7 @@
   let live = $state<number | null>(null);          // value while the user is turning it
   const v = $derived(live ?? value);
   const t = $derived(toNorm(v, r));
-  const lit = $derived(litTicks(v, r, ticks));
+  const lit = $derived(litRange(v, r, ticks));
   const text = $derived(format ? format(v) : readout(v, unit));
   const labels = $derived(scale === "none" ? [] : scaleLabels(r, scale === "ring" ? 5 : 2));
 
@@ -41,7 +41,7 @@
   function reset() { if (!disabled && def !== undefined) { set(def); commit(); } }
 
   // tick dots on a 100×100 grid
-  const dots = $derived(Array.from({ length: ticks }, (_, i) => { const a = (angleOf(i / (ticks - 1)) * Math.PI) / 180; return { x: 50 + 46 * Math.sin(a), y: 50 - 46 * Math.cos(a), on: i < lit }; }));
+  const dots = $derived(Array.from({ length: ticks }, (_, i) => { const a = (angleOf(i / (ticks - 1)) * Math.PI) / 180; return { x: 50 + 46 * Math.sin(a), y: 50 - 46 * Math.cos(a), on: !!lit && i >= lit[0] && i <= lit[1] }; }));
   const pos = (u: number, rad: number) => { const a = (angleOf(u) * Math.PI) / 180; return `left:${50 + rad * Math.sin(a)}%;top:${50 - rad * Math.cos(a)}%`; };
 </script>
 
