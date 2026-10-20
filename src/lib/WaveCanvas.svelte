@@ -54,27 +54,29 @@
   });
   const ticks = $derived(spec ? freqTicks(h, specScale, spec) : []);
 
-  $effect(() => {
-    if (!canvas) return;
+  // Progress (30 Hz while playing) must not repaint the canvas: the played part is a second, white copy of the
+  // waveform drawn once when playback starts and revealed with a CSS clip, so playing costs no canvas work.
+  let canvasP = $state<HTMLCanvasElement | undefined>(undefined);
+  const playingLane = $derived(progress > 0);
+  function paint(cv: HTMLCanvasElement, played: boolean) {
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr; canvas.height = h * dpr;
-    const ctx = canvas.getContext("2d")!;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const ctx = cv.getContext("2d")!;
     ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
     // clip blocks: audio clips get a faint body, silence (gaps) stays empty
-    if (duration > 0) for (const c of clips) { ctx.fillStyle = "#ffffff08"; ctx.fillRect((c.a / duration) * w, 0, ((c.b - c.a) / duration) * w, h); }
+    if (!played && duration > 0) for (const c of clips) { ctx.fillStyle = "#ffffff08"; ctx.fillRect((c.a / duration) * w, 0, ((c.b - c.a) / duration) * w, h); }
     if (specImg) {
       const off = document.createElement("canvas"); off.width = specImg.width; off.height = specImg.height;
       off.getContext("2d")!.putImageData(specImg, 0, 0);
       ctx.imageSmoothingEnabled = true; ctx.drawImage(off, 0, 0, w, h);
-      if (progress > 0) { ctx.fillStyle = "#ffffff22"; ctx.fillRect(0, 0, w * progress, h); }
     } else {
       const n = peaks.length / 2, mid = h / 2;
-      ctx.fillStyle = "#ffffff10"; ctx.fillRect(0, mid, w, 1);
+      if (!played) { ctx.fillStyle = "#ffffff10"; ctx.fillRect(0, mid, w, 1); }
+      ctx.fillStyle = played ? "#ffffff" : color;
       for (let x = 0; x < w; x++) {
         const a = Math.floor((x / w) * n), b = Math.max(a + 1, Math.floor(((x + 1) / w) * n));
         let mn = 0, mx = 0;
         for (let i = a; i < b && i < n; i++) { mn = Math.min(mn, peaks[i * 2]); mx = Math.max(mx, peaks[i * 2 + 1]); }
-        ctx.fillStyle = x / w < progress ? "#ffffff" : color;
         ctx.fillRect(x, mid - mx * mid, 1, Math.max(1, (mx - mn) * mid));
       }
     }
@@ -85,7 +87,9 @@
       ctx.fillStyle = bd.split ? "#ffffffcc" : "#ffffff30"; ctx.fillRect(x - 0.5, 0, 1, h);
       if (bd.split) { ctx.beginPath(); ctx.moveTo(x - 4, 0); ctx.lineTo(x + 4, 0); ctx.lineTo(x, 5); ctx.fill(); }
     }
-  });
+  }
+  $effect(() => { if (canvas) paint(canvas, false); });
+  $effect(() => { if (canvasP && playingLane && !specImg) paint(canvasP, true); });
 
   const timeAt = (e: { clientX: number }) => {
     const r = canvas.getBoundingClientRect();
@@ -109,6 +113,10 @@
   <canvas bind:this={canvas} style="width:{w}px;height:{h}px" onpointerdown={down} onpointermove={move} onpointerup={up}
     ondblclick={(e) => onpickclip?.(timeAt(e))}
     oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); oncontext?.(timeAt(e), e); }}></canvas>
+  {#if playingLane}
+    {#if spec}<div class="ptint" style="width:{Math.min(1, progress) * 100}%"></div>
+    {:else}<canvas class="played" bind:this={canvasP} aria-hidden="true" style="width:{w}px;height:{h}px;clip-path:inset(0 {(1 - Math.min(1, progress)) * 100}% 0 0)"></canvas>{/if}
+  {/if}
   {#each ticks as t (t.label)}<div class="tick" style="top:{t.y}px">{t.label}</div>{/each}
   {#each markers.filter((m) => m.time <= duration) as m (m.id)}
     <div class="mk" style="left:{pct(m.time)}%" title={m.label}><span>{m.label}</span></div>
@@ -158,6 +166,8 @@
   .wrap.spec { height: 140px; }
   .wrap.active { box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.33); }
   canvas { display: block; cursor: text; touch-action: none; }
+  canvas.played, .ptint { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .ptint { bottom: 0; background: #ffffff22; }
   .sel { position: absolute; top: 0; bottom: 0; background: rgb(var(--blue-rgb) / 0.25); border-left: 1px solid var(--blue-hi); border-right: 1px solid var(--blue-hi); pointer-events: none; }
   .mk { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--warn); pointer-events: none; }
   .mk span { position: absolute; top: 0; left: 2px; font-size: 9px; color: var(--warn); white-space: nowrap; background: rgb(var(--bg-rgb) / 0.80); padding: 0 3px; border-radius: 3px; }

@@ -37,6 +37,8 @@ pub enum Cmd {
     PausePlay(bool),
     StopPlay,
     DevicesChanged(Vec<String>),
+    /// Open the output stream ahead of the first Play (project loaded).
+    PrepareOutput,
     /// Pre-roll length (0-60 s) and whether to prepend it when Record is pressed.
     SetPreRoll(f32, bool),
     /// Write the last N seconds of the pre-roll buffer to a WAV in `dir`.
@@ -62,6 +64,9 @@ pub struct Shared {
 #[derive(Serialize, Clone)]
 pub struct LevelEvent { pub left: f32, pub right: f32, pub recording: bool, pub paused: bool, pub rec_secs: f64, pub xruns: u64, pub playing: bool, pub play_paused: bool, pub play_secs: f64, pub play_total: f64 }
 
+/// The persistent output stream is closed after this long without playback.
+const DECK_IDLE_CLOSE: Duration = Duration::from_secs(600);
+
 #[derive(Serialize, Clone)]
 pub struct EngineStatus { pub input_id: Option<String>, pub output_id: Option<String>, pub latency: LatencyProfile, pub buffer_frames: u32, pub sample_rate: u32, pub channels: u16, pub note: Option<String> }
 
@@ -82,7 +87,7 @@ pub fn spawn(app: AppHandle, initial_in: Option<String>, initial_out: Option<Str
     let sh = shared.clone();
     let app2 = app.clone();
     std::thread::Builder::new().name("sw-audio-engine".into()).spawn(move || {
-        let mut e = Engine { app: app2, sh, preroll: PreRoll::new(0.0, 1, 48000), preroll_secs: preroll.0, prepend: preroll.1, mic: MicCheck::new(1, 48000), input: None, output: None, input_id: initial_in, output_id: initial_out, latency, auto_backoff,
+        let mut e = Engine { app: app2, sh, preroll: PreRoll::new(0.0, 1, 48000), preroll_secs: preroll.0, prepend: preroll.1, mic: MicCheck::new(1, 48000), input: None, output: None, deck: None, deck_idle: Instant::now(), input_id: initial_in, output_id: initial_out, latency, auto_backoff,
             writer: None, pending_backoff: false, wanted: None, last_xruns: 0, last_xrun_check: Instant::now(), channels: 2, safety,
             vt: None, vt_above: None, vt_below: None, vt_recording: false, mon_peak: 0.0 };
         e.open_input();
@@ -93,6 +98,9 @@ pub fn spawn(app: AppHandle, initial_in: Option<String>, initial_out: Option<Str
     let sh = shared.clone();
     std::thread::Builder::new().name("sw-meter".into()).spawn(move || loop {
         std::thread::sleep(Duration::from_millis(33));
+        crate::perf::mark_at(sh.play.first_audio.take(), "callback: first audio");
+        crate::perf::mark_at(sh.play.first_cb.take(), "callback: first callback");
+        crate::perf::mark_at(sh.play.silent.take(), "callback: silent");
         let l = f32::from_bits(sh.peak[0].swap(0, Relaxed));
         let r = f32::from_bits(sh.peak[1].swap(0, Relaxed));
         let sr = sh.sample_rate.load(Relaxed).max(1) as f64;
@@ -115,6 +123,8 @@ struct Engine {
     app: AppHandle, sh: Arc<Shared>,
     preroll: PreRoll, preroll_secs: f32, prepend: bool, mic: MicCheck,
     input: Option<InputStream>, output: Option<playback::Session>,
+    /// Persistent shared-mode output stream (kept open between plays; closed after a long idle).
+    deck: Option<playback::Deck>, deck_idle: Instant,
     input_id: Option<String>, output_id: Option<String>,
     latency: LatencyProfile, auto_backoff: bool,
     writer: Option<Writer>, pending_backoff: bool, wanted: Option<String>,
@@ -344,18 +354,69 @@ impl Engine {
         }
     }
 
-    fn play(&mut self, req: playback::PlayRequest) {
-        self.output = None; // drops (and joins) the previous session
-        self.sh.play.playing.store(false, Relaxed);
-        let res = (|| -> anyhow::Result<playback::Session> {
+    /// End the current session with a de-click fade. Returns at once; the callback finishes the fade and flushes
+    /// the ring by itself (`wait_idle` before the next start).
+    fn end_session(&mut self) {
+        let p = &self.sh.play;
+        if p.state.load(Acquire) == playback::PLAYING { p.state.store(playback::STOPPING, Release) }
+        p.playing.store(false, Relaxed); p.paused.store(false, Relaxed);
+        if let Some(s) = self.output.take() {
+            match s.end() {
+                Some(prod) => if let Some(d) = self.deck.as_mut() { d.give_back(prod) },
+                None => self.deck = None, // render thread panicked: rebuild the deck next time
+            }
+        }
+        self.deck_idle = Instant::now();
+    }
+
+    /// Wait (bounded) until the callback has finished a fade-out and flushed. False = the stream isn't running.
+    fn wait_idle(&self) -> bool {
+        let t0 = Instant::now();
+        while self.sh.play.state.load(Acquire) != playback::IDLE {
+            if t0.elapsed() > Duration::from_millis(250) { return false }
+            std::thread::sleep(Duration::from_micros(500));
+        }
+        true
+    }
+
+    /// The open deck, (re)opening it when missing, broken or on another device. Shared mode only.
+    fn ensure_deck(&mut self) -> anyhow::Result<()> {
+        let broken = self.sh.play.stream_err.load(Relaxed) || self.deck.as_ref().is_some_and(|d| !d.has_producer());
+        let wrong = self.deck.as_ref().is_some_and(|d| self.output_id.as_deref().is_some_and(|w| w != d.dev_id));
+        if broken || wrong { self.deck = None }
+        if self.deck.is_none() {
             let (dev, id) = devices::find_device(self.output_id.as_deref(), false).ok_or_else(|| anyhow::anyhow!("no output device"))?;
-            self.output_id = Some(id);
-            playback::start(&dev, req, self.sh.play.clone(), self.latency.frames().max(256))
+            crate::perf::mark("engine: device found");
+            self.output_id = Some(id.clone());
+            self.deck = Some(playback::Deck::open(&dev, id, self.sh.play.clone(), self.latency.frames().max(256))?);
+            crate::perf::mark("engine: deck opened");
+        }
+        Ok(())
+    }
+
+    fn play(&mut self, req: playback::PlayRequest) {
+        crate::perf::mark("engine: PlaySession received");
+        self.end_session();
+        self.sh.play.first_audio.arm(); self.sh.play.first_cb.arm();
+        let res = (|| -> anyhow::Result<playback::Session> {
+            self.ensure_deck()?;
+            if !self.wait_idle() {
+                // the stream stopped calling back (device gone / suspended): reopen once
+                self.deck = None; self.sh.play.state.store(playback::IDLE, Release); self.ensure_deck()?;
+            }
+            self.deck.as_mut().expect("deck").start(req, self.sh.play.clone())
         })();
         match res {
             Ok(s) => self.output = Some(s),
-            Err(e) => { let _ = self.app.emit("playback-error", e.to_string()); }
+            Err(e) => { self.sh.play.state.store(playback::IDLE, Release); let _ = self.app.emit("playback-error", e.to_string()); }
         }
+    }
+
+    /// Warm up for a quick first Play (open the deck while idle).
+    fn prepare_output(&mut self) {
+        if self.output.is_some() { return }
+        if let Err(e) = self.ensure_deck() { log::warn!("output warm-up: {e}") }
+        self.deck_idle = Instant::now();
     }
 
     /// Move audio from the always-on tap into the pre-roll buffer and the mic checker.
@@ -432,7 +493,11 @@ impl Engine {
             self.drain_monitor();
             match rx.recv_timeout(Duration::from_millis(50)) {
                 Ok(Cmd::SelectInput(id)) => { if self.writer.is_none() { self.input_id = id; self.open_input(); } }
-                Ok(Cmd::SelectOutput(id)) => { self.output_id = id; self.status(None); }
+                Ok(Cmd::SelectOutput(id)) => {
+                    // a new device takes effect on the next Play (the deck is reopened there)
+                    if self.output.is_none() && id.is_some() && id != self.output_id { self.deck = None }
+                    self.output_id = id; self.status(None);
+                }
                 Ok(Cmd::SetLatency(p, ab)) => { self.latency = p; self.auto_backoff = ab; self.open_input(); }
                 Ok(Cmd::StartRecord(dir)) => self.start_record(dir),
                 Ok(Cmd::PauseRecord(p)) => { if self.writer.is_some() { self.sh.paused.store(p, Relaxed); let _ = self.app.emit("record-paused", p); } }
@@ -441,10 +506,16 @@ impl Engine {
                 Ok(Cmd::UpdateFx(slots)) => { if let Some(s) = &self.output { s.update_fx(slots) } }
                 Ok(Cmd::UpdateDry(d)) => { if let Some(s) = &self.output { s.update_dry(d) } }
                 Ok(Cmd::PausePlay(p)) => { if self.output.is_some() { self.sh.play.paused.store(p, Relaxed) } }
-                Ok(Cmd::StopPlay) => { self.output = None; self.sh.play.playing.store(false, Relaxed); self.sh.play.paused.store(false, Relaxed); }
+                Ok(Cmd::StopPlay) => { crate::perf::mark("engine: StopPlay received"); if self.sh.play.state.load(Acquire) == playback::PLAYING { self.sh.play.silent.arm() } self.end_session(); crate::perf::mark("engine: session ended (fading)"); }
+                Ok(Cmd::PrepareOutput) => self.prepare_output(),
                 Ok(Cmd::DevicesChanged(ids)) => {
                     // if our device vanished, treat it like a lost device
                     if let Some(cur) = &self.input_id { if !ids.contains(cur) { self.sh.device_lost.store(true, Relaxed) } }
+                    // the open output went away: stop cleanly and reopen on the next Play
+                    if self.deck.as_ref().is_some_and(|d| !ids.contains(&d.dev_id)) {
+                        if self.output.is_some() { self.end_session(); let _ = self.app.emit("playback-error", "The output device was disconnected"); }
+                        self.deck = None;
+                    }
                     if let Some(w) = self.wanted.clone() {
                         if ids.contains(&w) && self.writer.is_none() {
                             self.wanted = None; self.input_id = Some(w.clone()); self.open_input();
@@ -464,7 +535,10 @@ impl Engine {
                 Err(mpsc::RecvTimeoutError::Disconnected) => { self.stop_record(); return }
             }
             self.voice_trigger_tick();
-            if !self.sh.play.playing.load(Relaxed) && !self.sh.play.paused.load(Relaxed) && self.output.is_some() { self.output = None; }
+            // natural end of the audio: hand the ring back
+            if self.output.is_some() && !self.sh.play.paused.load(Relaxed) && self.sh.play.state.load(Acquire) == playback::IDLE { self.end_session(); }
+            // stream died while idle, or idle for a long time: close it (reopened on the next Play)
+            if self.output.is_none() && self.deck.is_some() && (self.sh.play.stream_err.load(Relaxed) || self.deck_idle.elapsed() > DECK_IDLE_CLOSE) { self.deck = None }
             // graceful fallback when the recording device disappears
             if self.sh.device_lost.swap(false, Relaxed) {
                 let lost = self.input_id.clone();

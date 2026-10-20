@@ -9,6 +9,9 @@
   import Ruler from "./lib/ui/Ruler.svelte";
   import Preview from "./lib/ui/Preview.svelte";
   import Knob from "./lib/ui/Knob.svelte";
+  import LedToggle from "./lib/ui/LedToggle.svelte";
+  import { ANCHOR, FollowState, HeadClock, followStep } from "./lib/follow";
+  import { switchProject } from "./lib/projectSwitch";
   import EffectsWorkspace from "./lib/EffectsWorkspace.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
@@ -35,7 +38,7 @@
   import { api, fmtTime, type DeviceInfo, type EngineStatus, type Level, type Settings, type LatencyProfile, type MicReport, type ExportOptions, type Analysis, type ObsStatus } from "./lib/api";
 
   let settings = $state<Settings>({ input_device: null, output_device: null, latency: "Balanced", auto_backoff: true,
-    record_dir: null, obs_host: "localhost", obs_port: 4455, obs_password: "", obs_auto_import: true, preroll_secs: 30, preroll_prepend: false, recent_projects: [], follow_obs: false });
+    record_dir: null, obs_host: "localhost", obs_port: 4455, obs_password: "", obs_auto_import: true, preroll_secs: 30, preroll_prepend: false, recent_projects: [], follow_obs: false, follow_playhead: true });
   let devices = $state<DeviceInfo[]>([]);
   let level = $state<Level>({ left: 0, right: 0, recording: false, paused: false, rec_secs: 0, xruns: 0, playing: false, play_secs: 0, play_total: 0 });
   let engine = $state<EngineStatus | null>(null);
@@ -86,6 +89,7 @@
       const id = nextId++;
       commit("Add track", { ...hist.present, tracks: [...hist.present.tracks, { id, name: name ?? w.name, kind, video, clips: [{ src: w.path, start: 0, end: w.duration_secs }] }] });
       selection = { trackId: id, a: 0, b: 0 };
+      api.preparePlayback().catch(() => {});
     } catch (e) { toast(String(e), "err"); }
   }
   // ---- Audacity (.aup3) import: read-only, audio extracted to a media folder ----
@@ -289,9 +293,76 @@
   }
   function syncScroll(e: Event) {
     const x = (e.currentTarget as HTMLElement).scrollLeft;
+    const now = performance.now();
+    // our own follow scroll: every lane, the ruler and the preview box were already updated in that frame
+    if (now < autoUntil && Math.abs(x - autoLeft) < 2) return;
+    // anyone else moving the timeline while it plays (scrollbar, keys, touchpad) is the user: follow steps aside
+    if ((level.playing || level.recording) && now - zoomAt > 400 && Math.abs(x - autoLeft) >= 2) follow.userScroll(now);
     for (const el of document.querySelectorAll<HTMLElement>(".tracks .scroll")) if (el !== e.currentTarget && el.scrollLeft !== x) el.scrollLeft = x;
     updateViewWin();
   }
+  // ---- Follow playhead: keep the play/record head in view (one rAF loop while playing or recording) ----
+  const followOn = $derived(settings.follow_playhead ?? true);
+  const follow = new FollowState();
+  const headClock = new HeadClock(), recClock = new HeadClock();
+  let smoothHead = $state<number | null>(null), smoothRec = $state<number | null>(null);
+  let followHeld = $state(false);
+  let followAnchor = ANCHOR, autoLeft = -1, autoUntil = 0, zoomAt = 0, raf = 0, lastFrame = 0;
+  $effect(() => { void zoom; zoomAt = performance.now(); });
+  // warm the play cache for the track Space would play (after loads / edits settle; never while playing)
+  let prerenderTimer: ReturnType<typeof setTimeout> | undefined;
+  $effect(() => {
+    void project; const id = selection?.trackId;
+    clearTimeout(prerenderTimer);
+    prerenderTimer = setTimeout(() => {
+      if (level.playing || level.recording) return;
+      const t = project.tracks.find((x) => x.id === id && x.clips.length) ?? project.tracks.find((x) => x.clips.length);
+      if (t && !E.isLabelTrack(t)) api.prerenderClips(clipsFor(t.clips), fxFor(t)).catch(() => {});
+    }, 500);
+  });
+  function setFollow(on: boolean) {
+    settings.follow_playhead = on; follow.play(); followAnchor = ANCHOR;
+    api.setFollowPlayhead(on).catch(() => {});
+    toast(on ? "Follow playhead: on" : "Follow playhead: off");
+  }
+  function onLevel(l: Level) {
+    const now = performance.now();
+    if (l.playing && now - localStopAt < 150) l = { ...l, playing: false, play_paused: false }; // a report sent before our Stop
+    const started = (l.playing && !level.playing) || (l.playing && level.play_paused && !l.play_paused);
+    level = l;
+    if (started) { follow.play(); followAnchor = ANCHOR; }
+    headClock.report(l.playing && playingId !== null ? playOffset + l.play_secs : 0, now, l.playing && !l.play_paused);
+    recClock.report(l.rec_secs, now, l.recording && !l.paused);
+    if ((l.playing || l.recording) && !raf) { lastFrame = now; raf = requestAnimationFrame(followFrame); }
+  }
+  function followFrame(now: number) {
+    raf = 0;
+    const playing = level.playing && playingId !== null;
+    if (!playing && !level.recording) { smoothHead = smoothRec = null; followHeld = false; return; }
+    raf = requestAnimationFrame(followFrame);
+    const dt = (now - lastFrame) / 1000; lastFrame = now;
+    // the displayed playhead (ruler + preview) moves every frame, not in 30 Hz steps
+    if (playing) smoothHead = headClock.now(now); else smoothRec = recClock.now(now);
+    if (!followOn) { followHeld = false; return; }
+    const head = playing ? smoothHead! : smoothRec!;
+    // reads first (the ruler is always zoom × 100 % wide), then writes only: no layout thrash
+    const ref = document.querySelector<HTMLElement>(".tracks .rwrap .scroll");
+    if (!ref || !timelineLen) return;
+    const width = ref.clientWidth, max = ref.scrollWidth - width, left = ref.scrollLeft;
+    if (max <= 0) { followHeld = false; return; }
+    const px = (width * zoom) / timelineLen, headPx = Math.min(head, timelineLen) * px;
+    const on = follow.active(now, (headPx - left) / width);
+    if (followHeld !== !on) followHeld = !on;
+    if (!on) return;
+    if (follow.resumeAnchor !== null) { followAnchor = follow.resumeAnchor; follow.resumeAnchor = null; }
+    const r = followStep(headPx, { left, width, max }, followAnchor, dt);
+    followAnchor = r.anchor;
+    if (Math.abs(r.left - left) < 0.5) return;
+    autoLeft = r.left; autoUntil = now + 250;
+    for (const el of document.querySelectorAll<HTMLElement>(".tracks .scroll")) el.scrollLeft = r.left;
+    viewWin = { a: r.left / px, b: (r.left + width) / px };
+  }
+
   // ---- the part of the timeline the lanes currently show (for the preview's viewport box) + zoom to selection ----
   let viewWin = $state<{ a: number; b: number } | null>(null);
   function updateViewWin() {
@@ -502,8 +573,11 @@
   function removeTrack(id: number) { commit("Remove track", { ...hist.present, tracks: hist.present.tracks.filter((t) => t.id !== id) }); }
 
   // ---- edit actions ----
-  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates" | "importaup3" | "split" | "join" | "addlabel" | "labeltrack" | "labelsmarkers" | "importlabels" | "exportlabels" | "toggleview";
+  type Action = "undo" | "redo" | "cut" | "copy" | "paste" | "delete" | "selectall" | "playpause" | "stop" | "record" | "import" | "export" | "zoomin" | "zoomout" | "save" | "saveas" | "open" | "new" | "savelast" | "pause" | "marker" | "prevmarker" | "nextmarker" | "sendvideo" | "about" | "checkupdates" | "importaup3" | "split" | "join" | "addlabel" | "labeltrack" | "labelsmarkers" | "importlabels" | "exportlabels" | "toggleview" | "close" | "follow";
+  let perfOn = false;
+  api.perfEnabled().then((v) => (perfOn = v)).catch(() => {});
   async function run(action: Action) {
+    if (perfOn && (action === "playpause" || action === "stop")) api.perfMark(`${action} pressed`);
     const sel = selection;
     switch (action) {
       case "undo": { const l = hist.undoLabel; if (hist.undo()) { sync(); toast(`Undo ${l}`); restartIfPlaying(); } break; }
@@ -554,7 +628,9 @@
         try { await api.playClips(clipsFor(clips), fxFor(t), start); } catch (e) { toast(String(e), "err"); }
         break;
       }
-      case "stop": await api.stopPlayback(); playingId = null; break;
+      case "stop": stopTransportUi(); await api.stopPlayback(); break;
+      case "close": await closeProject(); break;
+      case "follow": setFollow(!followOn); break;
       case "about": showAbout = true; break;
       case "checkupdates": showAbout = false; updateMode = "manual"; break;
       case "record": await toggleRecord(); break;
@@ -610,23 +686,63 @@
     savedPresent = path ? hist.present : ({ tracks: [] } as E.Project); autosavedPresent = hist.present;
     sync(); markDirty();
     if (missing.length) toast(`Missing source files: ${missing.join(", ")}`, "err");
+    if (f.tracks.length) api.preparePlayback().catch(() => {});
   }
+
+  // ---- replacing the project: stop the old audio first (New / Open / Close / Recover / double-clicked .twt) ----
+  let takeLanded: (() => void) | null = null;
+  /** Stop the running recording and wait until its take has been added to the current project. */
+  function stopRecordingAndWait(): Promise<void> {
+    return new Promise((res) => {
+      const t = setTimeout(() => { takeLanded = null; res(); }, 10000);
+      takeLanded = () => { clearTimeout(t); takeLanded = null; res(); };
+      toggleRecord().catch(() => takeLanded?.());
+    });
+  }
+  let localStopAt = 0;
+  /** Stop playback now (engine fades out in a few ms) and reset the transport/playhead in the UI right away. */
+  function stopTransportUi() {
+    clearTimeout(restartTimer);
+    playingId = null; playOffset = 0; playRange = null; smoothHead = null; localStopAt = performance.now();
+    level = { ...level, playing: false, play_paused: false, play_secs: 0, play_total: 0 };
+    headClock.report(0, performance.now(), false);
+  }
+  async function releaseAudio() {
+    stopTransportUi();
+    specs = new Map();
+    await api.releaseProjectAudio();
+  }
+  const switchDeps = {
+    recording: () => level.recording,
+    confirm: (m: string) => ask(m, { title: "StreamWave", kind: "warning" }),
+    stopRecording: stopRecordingAndWait,
+    dirty: () => dirty,
+    releaseAudio,
+  };
   async function openProject(path?: string) {
-    if (dirty && !(await ask("Discard unsaved changes?", { title: "StreamWave", kind: "warning" }))) return;
-    const p = path ?? (await open({ filters: [{ name: "StreamWave project", extensions: ["twt"] }] }));
-    if (!p || Array.isArray(p)) return;
-    try { await loadProjectJson(await api.projectOpen(p), p); toast(`Opened ${projName}`); }
-    catch (e) { toast(`Could not open project: ${e}`, "err"); }
+    const pick = async () => { const p = path ?? (await open({ filters: [{ name: "StreamWave project", extensions: ["twt"] }] })); return !p || Array.isArray(p) ? null : p; };
+    await switchProject(switchDeps, pick, async (p) => {
+      try { await loadProjectJson(await api.projectOpen(p), p); toast(`Opened ${projName}`); }
+      catch (e) { toast(`Could not open project: ${e}`, "err"); }
+    });
     recentProjects = await api.recentProjects();
   }
-  async function newProject() {
-    if (dirty && !(await ask("Discard unsaved changes?", { title: "StreamWave", kind: "warning" }))) return;
-    hist.reset({ tracks: [] }); savedPresent = autosavedPresent = hist.present; projectPath = null; selection = null; sync(); markDirty();
+  async function emptyProject() {
+    hist.reset({ tracks: [] }); savedPresent = autosavedPresent = hist.present; projectPath = null; selection = null; sources = new Map(); sync(); markDirty();
     await api.autosaveClear();
+  }
+  async function newProject() { await switchProject(switchDeps, async () => true, emptyProject); }
+  async function closeProject() {
+    const had = project.tracks.length > 0 || !!projectPath;
+    if (await switchProject(switchDeps, async () => true, emptyProject) && had) toast("Project closed");
   }
   async function recover(accept: boolean) {
     const json = recovery; recovery = null;
-    if (accept && json) { try { await loadProjectJson(json, null); toast("Recovered your unsaved work"); } catch (e) { toast(String(e), "err"); } }
+    if (accept && json) {
+      await switchProject(switchDeps, async () => json, async (j) => {
+        try { await loadProjectJson(j, null); toast("Recovered your unsaved work"); } catch (e) { toast(String(e), "err"); }
+      });
+    }
     else await api.autosaveClear();
   }
 
@@ -878,7 +994,9 @@
     transcribing = false;
   }
   /** Timeline position being played (timeline seconds), or null when nothing plays. */
-  const playhead = $derived(level.playing && playingId !== null ? playOffset + level.play_secs : null);
+  const playhead = $derived(level.playing && playingId !== null ? smoothHead ?? playOffset + level.play_secs : null);
+  /** While recording (and not playing) the ruler shows where the take is; it lands at 0 like the markers. */
+  const recHead = $derived(level.recording && playhead === null ? smoothRec : null);
   /** Ruler click/drag: move the edit cursor; when a whole track is playing, continue playback from there on release. */
   async function rulerSeek(at: number, final: boolean) {
     const t = activeTrack(); if (!t) return;
@@ -935,7 +1053,7 @@
       if (k === "p" && !e.shiftKey) return "pause";
       if (k === "g" && e.shiftKey) return "toggleview";
       if (e.shiftKey) return null;
-      return ({ y: "redo", x: "cut", c: "copy", v: "paste", a: "selectall", i: "import", e: "export", o: "open", n: "new", k: "split", j: "join", b: "addlabel" } as Record<string, Action>)[k] ?? null;
+      return ({ y: "redo", x: "cut", c: "copy", v: "paste", a: "selectall", i: "import", e: "export", o: "open", n: "new", w: "close", k: "split", j: "join", b: "addlabel" } as Record<string, Action>)[k] ?? null;
     }
     if (e.altKey) return null;
     if (e.key === "Delete" || e.key === "Backspace") return "delete";
@@ -943,6 +1061,7 @@
     if (e.key === "Escape" && level.playing) return "stop";
     if (e.code === "KeyR" && !e.repeat) return "record";
     if (e.code === "KeyM" && !e.repeat) return "marker";
+    if (e.code === "KeyF" && !e.repeat && !e.shiftKey) return "follow";
     if (e.key === "[") return "prevmarker";
     if (e.key === "]") return "nextmarker";
     if (e.key === "+" || e.key === "=") return "zoomin";
@@ -1029,11 +1148,11 @@
     const beforeUnload = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); } };
     window.addEventListener("beforeunload", beforeUnload);
     const uns = [
-      listen<Level>("level", (e) => (level = e.payload)),
+      listen<Level>("level", (e) => onLevel(e.payload)),
       listen<EngineStatus>("engine-status", (e) => { engine = e.payload; if (e.payload.note) toast(e.payload.note, "warn"); }),
-      listen<string>("record-finished", (e) => { toast("Recording saved"); addTrack(e.payload, "mic"); }),
+      listen<string>("record-finished", async (e) => { toast("Recording saved"); await addTrack(e.payload, "mic"); takeLanded?.(); }),
       listen<string>("record-part", (e) => toast(`Long take: saved part ${e.payload.split(/[\\/]/).pop()}`)),
-      listen<string>("record-error", (e) => toast(`Recording error: ${e.payload}`, "err")),
+      listen<string>("record-error", (e) => { toast(`Recording error: ${e.payload}`, "err"); takeLanded?.(); }),
       listen<string>("playback-error", (e) => toast(`Playback error: ${e.payload}`, "err")),
       listen<{ devices: DeviceInfo[]; added: string[]; removed: string[] }>("devices-changed", (e) => {
         devices = e.payload.devices;
@@ -1064,7 +1183,9 @@
     const noZoom = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); };
     window.addEventListener("contextmenu", noCtx);
     window.addEventListener("wheel", noZoom, { passive: false });
-    uns.push(Promise.resolve(() => { window.removeEventListener("contextmenu", noCtx); window.removeEventListener("wheel", noZoom); }));
+    const followUp = () => follow.pointerUp(performance.now());
+    window.addEventListener("pointerup", followUp); window.addEventListener("pointercancel", followUp);
+    uns.push(Promise.resolve(() => { window.removeEventListener("contextmenu", noCtx); window.removeEventListener("wheel", noZoom); window.removeEventListener("pointerup", followUp); window.removeEventListener("pointercancel", followUp); cancelAnimationFrame(raf); }));
     return () => { uns.forEach((u) => u.then((f) => f())); window.removeEventListener("keydown", onKey); clearInterval(autosave); window.removeEventListener("beforeunload", beforeUnload); };
   });
 </script>
@@ -1184,15 +1305,21 @@
           onzoomsel={() => { if (psel) zoomTo(psel.a, psel.b); }} onfit={() => setZoom(1)} />
       {/if}
 
-      <div class="tracks" role="region" aria-label="Tracks" oncontextmenu={openEmptyMenu} onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } }}>
+      <div class="tracks" role="region" aria-label="Tracks" oncontextmenu={openEmptyMenu}
+        onpointerdowncapture={(e) => { if (e.button === 0 && !(e.target as Element).closest?.("button, .mixbar")) follow.pointerDown(); }}
+        onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } else if (e.deltaX || e.shiftKey) follow.userScroll(performance.now()); }}>
         {#if project.tracks.length}
           <div class="mixbar">
             <button class="small" onclick={playMix} title="Render every track with its effects and play the combined mix">▶ Mix all {project.tracks.length} track{project.tracks.length > 1 ? "s" : ""}</button>
             {#if playingId === -1 && level.playing}<button class="small" onclick={() => run("stop")}>■ Stop mix</button>{/if}
+            <span class="follow" class:held={followOn && followHeld}>
+              {#if followOn && followHeld}<span class="small fhold">Follow paused · Play or scroll back to the playhead</span>{/if}
+              <LedToggle checked={followOn} label="Follow" title="Follow playhead (F): keep the playhead in view while playing or recording" onchange={setFollow} />
+            </span>
           </div>
         {/if}
         {#if project.tracks.length}
-          <Ruler duration={timelineLen} {zoom} {playhead} cursor={selection?.a ?? null}
+          <Ruler duration={timelineLen} {zoom} playhead={playhead ?? recHead} cursor={selection?.a ?? null}
             selection={selection && selection.b - selection.a > 0.0005 ? selection : null} markers={project.markers ?? []}
             onscroll={syncScroll} onseek={rulerSeek} />
         {/if}
@@ -1274,7 +1401,7 @@
             </div></div></div>
           </div>
         {/each}
-        {#if project.tracks.length}<div class="small hint2">Drag to select (drag up/down for more tracks, Ctrl-click adds a track) · drag a clip's title bar to move it (Alt = no snapping, Esc cancels) · ◧ = Layering Effects · Shift-click to extend · Ctrl+X/C/V · Del · Ctrl+A · Ctrl+K split · Ctrl+J join · double-click a clip · Ctrl+B label · Ctrl+Z / Ctrl+Y · Space play/pause · M marker · [ ] jump · Ctrl+scroll or +/− zoom ({zoom.toFixed(1)}×) — edits never change your original files</div>{/if}
+        {#if project.tracks.length}<div class="small hint2">Drag to select (drag up/down for more tracks, Ctrl-click adds a track) · drag a clip's title bar to move it (Alt = no snapping, Esc cancels) · ◧ = Layering Effects · Shift-click to extend · Ctrl+X/C/V · Del · Ctrl+A · Ctrl+K split · Ctrl+J join · double-click a clip · Ctrl+B label · Ctrl+Z / Ctrl+Y · Space play/pause · F follow playhead · M marker · [ ] jump · Ctrl+scroll or +/− zoom ({zoom.toFixed(1)}×) — edits never change your original files</div>{/if}
       </div>
     </section>
 
@@ -1438,6 +1565,8 @@
   .rec-banner { border-color: var(--warn); } .row2 { display: flex; gap: 8px; margin-top: 8px; } .row2 button { flex: 1; }
   .hint2 { text-align: center; padding: 6px; }
   .mixbar { display: flex; gap: 8px; align-items: center; }
+  .mixbar .follow { margin-left: auto; display: inline-flex; align-items: center; gap: 10px; }
+  .mixbar .fhold { color: var(--muted); font-style: italic; }
   .virthint { background: rgb(var(--accent-rgb) / 0.07); border: 1px solid rgb(var(--accent-rgb) / 0.27); border-radius: 8px; padding: 8px; font-size: 11px; color: var(--muted); }
   .segs { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
   .seg { text-align: left; font-size: 12px; padding: 4px 6px; background: transparent; border: none; border-radius: 6px; }

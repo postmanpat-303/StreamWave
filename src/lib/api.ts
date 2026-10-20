@@ -13,7 +13,7 @@ export interface MicReport { issues: ("Clipping" | "TooQuiet" | "Silence" | "DcO
 export interface Analysis { noise_floor_db: number; speech_level_db: number; snr_db: number; lufs: number | null; balance_db: number[]; sibilance_db: number; plosives: number; reverb_ms: number; notes: string[]; }
 export interface SplitTrack { path: string; index: number; label: string; }
 export interface Settings { input_device: string | null; output_device: string | null; latency: LatencyProfile; auto_backoff: boolean;
-  record_dir: string | null; obs_host: string; obs_port: number; obs_password: string; obs_auto_import: boolean; preroll_secs: number; preroll_prepend: boolean; recent_projects: string[]; follow_obs: boolean; safety_track?: boolean; voice_trigger?: { threshold_db: number; hold_ms: number } | null; whisper_model?: string | null; onboarded?: boolean;
+  record_dir: string | null; obs_host: string; obs_port: number; obs_password: string; obs_auto_import: boolean; preroll_secs: number; preroll_prepend: boolean; recent_projects: string[]; follow_obs: boolean; safety_track?: boolean; voice_trigger?: { threshold_db: number; hold_ms: number } | null; whisper_model?: string | null; onboarded?: boolean; follow_playhead?: boolean;
   update_auto_check?: boolean; update_last_check?: number | null; update_skip_version?: string | null; }
 export interface Level { left: number; right: number; recording: boolean; paused: boolean; rec_secs: number; xruns: number; playing: boolean; play_paused?: boolean; play_secs: number; play_total: number; }
 export interface EngineStatus { input_id: string | null; output_id: string | null; latency: LatencyProfile; buffer_frames: number; sample_rate: number; channels: number; note: string | null; }
@@ -62,6 +62,16 @@ export const api = {
   whisperStatus: () => invoke<{ found: boolean; path: string | null; model_found: boolean; message: string }>("whisper_status"),
   transcribe: (path: string) => invoke<{ start: number; end: number; text: string }[]>("transcribe", { path }),
   stopPlayback: () => invoke("stop_playback"),
+  /** Latency tracing (only does anything when the app runs with STREAMWAVE_PERF=1). */
+  perfEnabled: () => invoke<boolean>("perf_enabled"),
+  /** Open the output stream ahead of the first Play (no-op if it is open). */
+  preparePlayback: () => invoke("prepare_playback"),
+  /** Render + measure a track in the background so its next Play starts at once. */
+  prerenderClips: (clips: ClipArg[], fx: FxArg[]) => invoke("prerender_clips", { clips, fx }),
+  /** The project is being replaced/closed: stop playback (short fade) and free its rendered/decoded audio. */
+  releaseProjectAudio: () => invoke("release_project_audio"),
+  setFollowPlayhead: (on: boolean) => invoke("set_follow_playhead", { on }),
+  perfMark: (what: string) => invoke("perf_mark", { what, at: performance.timeOrigin + performance.now() }),
   /** Swap the live effect chain of the running playback (no restart, state carried over). */
   updateFx: (fx: FxArg[]) => invoke("update_fx", { fx }),
   pausePlayback: (pause: boolean) => invoke("pause_playback", { pause }),

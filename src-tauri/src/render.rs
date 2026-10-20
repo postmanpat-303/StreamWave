@@ -56,6 +56,8 @@ pub struct DecodeCache(Mutex<Vec<(String, Arc<Decoded>)>>);
 const CACHE_BYTES: usize = 1_500_000_000;
 
 impl DecodeCache {
+    /// Drop all decoded sources (the project was replaced/closed; they are re-decoded on demand).
+    pub fn clear(&self) { self.0.lock().clear() }
     pub fn get(&self, path: &str) -> anyhow::Result<Arc<Decoded>> {
         {
             let mut c = self.0.lock();
@@ -83,6 +85,45 @@ impl DecodeCache {
 /// into its source tail and the incoming clip starts `h` frames early from its source head; the two are summed with
 /// complementary curves. `h` is clamped to the handles the sources really have and to half of either clip, so a
 /// crossfade can never read past a source or create a dip. Clips without crossfades render exactly as before.
+/// Rendered audio for playback, keyed by everything that shapes it (clip list incl. gains, fades, crossfades and
+/// clip effects; track effects for the measured gains). Edits change the key, so stale audio is never played;
+/// pressing Play again on unchanged audio skips the render (and the whole-file Normalize/Loudness measure).
+#[derive(Default, Clone)]
+pub struct PlayCache(Arc<PlayCacheInner>);
+#[derive(Default)]
+pub struct PlayCacheInner { dry: Mutex<Vec<(u64, Arc<Decoded>)>>, gains: Mutex<Vec<(u64, Vec<Option<f32>>)>> }
+const PLAY_CACHE_ENTRIES: usize = 4;
+const PLAY_CACHE_BYTES: usize = 800_000_000;
+/// Content key of a render input (Debug output is exact for f64 and covers every field).
+pub fn key_of<T: std::fmt::Debug + ?Sized>(x: &T) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new(); format!("{x:?}").hash(&mut h); h.finish()
+}
+impl PlayCache {
+    /// Cached render for `key`, or run `f` and keep the result (most recent first, bounded by count and bytes).
+    pub fn dry(&self, key: u64, f: impl FnOnce() -> anyhow::Result<Decoded>) -> anyhow::Result<Arc<Decoded>> {
+        if let Some(d) = self.get(key) { return Ok(d) }
+        let d = Arc::new(f()?); self.put(key, d.clone()); Ok(d)
+    }
+    pub fn get(&self, key: u64) -> Option<Arc<Decoded>> {
+        let mut c = self.0.dry.lock();
+        let i = c.iter().position(|(k, _)| *k == key)?; let e = c.remove(i); let d = e.1.clone(); c.insert(0, e); Some(d)
+    }
+    pub fn put(&self, key: u64, d: Arc<Decoded>) {
+        let mut c = self.0.dry.lock();
+        c.retain(|(k, _)| *k != key); c.insert(0, (key, d));
+        let mut bytes = 0usize; let mut n = 0usize;
+        c.retain(|(_, x)| { n += 1; bytes += x.samples.len() * 4; n == 1 || (n <= PLAY_CACHE_ENTRIES && bytes <= PLAY_CACHE_BYTES) });
+    }
+    pub fn gains(&self, key: u64, f: impl FnOnce() -> Vec<Option<f32>>) -> Vec<Option<f32>> {
+        if let Some(g) = self.0.gains.lock().iter().find(|(k, _)| *k == key).map(|(_, g)| g.clone()) { return g }
+        let g = f(); let mut c = self.0.gains.lock(); c.retain(|(k, _)| *k != key); c.insert(0, (key, g.clone())); c.truncate(16); g
+    }
+    /// Forget everything (the project was replaced/closed).
+    pub fn clear(&self) { self.0.dry.lock().clear(); self.0.gains.lock().clear(); }
+    #[allow(dead_code)] pub fn len(&self) -> usize { self.0.dry.lock().len() }
+}
+
 pub fn render(cache: &DecodeCache, clips: &[ClipSpec]) -> anyhow::Result<Decoded> {
     anyhow::ensure!(!clips.is_empty(), "nothing to render");
     let (rate, ch) = match clips.iter().find(|c| !c.gap) {
@@ -203,6 +244,43 @@ pub fn write_wav(d: &Decoded, path: &Path) -> anyhow::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn dec(n: usize) -> Decoded { Decoded { samples: vec![0.25; n], sample_rate: 48000, channels: 1 } }
+    #[test]
+    fn play_cache_renders_once_until_an_edit_changes_the_key() {
+        let pc = PlayCache::default();
+        let a = vec![ClipSpec { src: "a.wav".into(), start: 0.0, end: 1.0, ..Default::default() }];
+        let mut renders = 0;
+        let k = key_of(&a[..]);
+        let d1 = pc.dry(k, || { renders += 1; Ok(dec(10)) }).unwrap();
+        let d2 = pc.dry(k, || { renders += 1; Ok(dec(10)) }).unwrap();
+        assert_eq!(renders, 1, "Play again on unchanged audio must not re-render");
+        assert!(Arc::ptr_eq(&d1, &d2));
+        // every kind of edit changes the key -> fresh render
+        let mut b = a.clone(); b[0].gain_db = Some(-3.0); assert_ne!(key_of(&b[..]), k);
+        let mut c = a.clone(); c[0].end = 0.999_999; assert_ne!(key_of(&c[..]), k);
+        let mut f = a.clone(); f[0].fade_in_ms = Some(10.0); assert_ne!(key_of(&f[..]), k);
+        let mut x = a.clone(); x[0].fx = vec![crate::fx::Slot { bypass: false, fx: crate::fx::Effect::Gain { db: 2.0 } }]; assert_ne!(key_of(&x[..]), k);
+        pc.dry(key_of(&b[..]), || { renders += 1; Ok(dec(10)) }).unwrap();
+        assert_eq!(renders, 2);
+        // gains are cached per (audio, track chain)
+        let mut measures = 0;
+        let g1 = pc.gains(7, || { measures += 1; vec![Some(1.5)] });
+        let g2 = pc.gains(7, || { measures += 1; vec![Some(9.9)] });
+        assert_eq!((g1, g2, measures), (vec![Some(1.5)], vec![Some(1.5)], 1));
+        // replacing the project drops it all
+        pc.clear(); assert_eq!(pc.len(), 0);
+        pc.dry(k, || { renders += 1; Ok(dec(10)) }).unwrap(); assert_eq!(renders, 3);
+    }
+    #[test]
+    fn play_cache_is_bounded() {
+        let pc = PlayCache::default();
+        for k in 0..10u64 { pc.put(k, Arc::new(dec(16))) }
+        assert_eq!(pc.len(), PLAY_CACHE_ENTRIES);
+        assert!(pc.get(9).is_some() && pc.get(0).is_none(), "most recent kept");
+        // a single huge render is still kept (it is the one playing) but evicts the rest
+        pc.put(99, Arc::new(dec(PLAY_CACHE_BYTES / 4 + 1)));
+        assert_eq!(pc.len(), 1); assert!(pc.get(99).is_some());
+    }
     #[test]
     fn renders_clips_without_touching_source() {
         let dir = std::env::temp_dir().join("tw_render_test"); let _ = std::fs::remove_dir_all(&dir); std::fs::create_dir_all(&dir).unwrap();
