@@ -133,7 +133,7 @@
     overflow-y: auto; overscroll-behavior: contain; box-sizing: border-box; }
   .ctxmenu.sub { z-index: 101; }
   .it { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px 6px 4px; background: none; border: 0; border-radius: 6px; text-align: left; color: var(--text); cursor: default; }
-  .it.act:not(.dis), .it.open:not(.dis), .it:focus-visible:not(.dis) { background: #19d3b026; outline: none; }
+  .it.act:not(.dis), .it.open:not(.dis), .it:focus-visible:not(.dis) { background: rgb(var(--accent-rgb) / 0.15); outline: none; }
   .it.act:not(.dis) .lb, .it.open .lb { color: #fff; }
   .it.dis { color: #ffffff44; } .it:focus { outline: none; }
   .it.danger:not(.dis) .lb { color: #ff8095; }

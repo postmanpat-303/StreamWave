@@ -41,7 +41,7 @@
 </div>
 <style>
   .veil { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 120; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 26px; width: min(440px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .card { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 26px; width: min(440px, 92vw); display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
   .logo { border-radius: 28px; box-shadow: 0 12px 40px rgba(255,122,26,.35); margin-bottom: 6px; }
   h2 { margin: 0; font-size: 26px; }
   .ver { color: var(--muted); font-size: 13px; }

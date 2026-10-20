@@ -73,11 +73,11 @@
   <div class="muted">Includes the track's edits and effects. Your original files aren't changed.</div>
 </div>
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
   .hdr { display: flex; justify-content: space-between; align-items: center; } .hdr h3 { margin: 0; } .x { background: none; border: none; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .go { width: 100%; margin-top: 12px; background: var(--accent); color: #002; border-color: var(--accent); font-weight: 600; }
-  .warn { background: #ffb02018; border: 1px solid #ffb02066; border-radius: 8px; padding: 8px; font-size: 12px; margin: 8px 0; }
+  .warn { background: rgb(var(--warn-rgb) / 0.09); border: 1px solid rgb(var(--warn-rgb) / 0.40); border-radius: 8px; padding: 8px; font-size: 12px; margin: 8px 0; }
   .muted { color: var(--muted); font-size: 11px; margin-top: 6px; }
   details { margin-top: 10px; font-size: 13px; } summary { cursor: pointer; color: var(--muted); }
   input[type="range"] { padding: 0; accent-color: var(--accent); }

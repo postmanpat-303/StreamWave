@@ -65,9 +65,9 @@
 </div>
 
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
   .hdr { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .hdr h3 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ab { font-size: 11px; padding: 4px 8px; background: #19d3b022; border-color: var(--accent); } .ab.b { background: #ffb02022; border-color: var(--warn); }
+  .ab { font-size: 11px; padding: 4px 8px; background: rgb(var(--accent-rgb) / 0.13); border-color: var(--accent); } .ab.b { background: rgb(var(--warn-rgb) / 0.13); border-color: var(--warn); }
   .presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; } .presets button { font-size: 12px; padding: 5px 9px; border-radius: 14px; }
   .lufs { display: flex; gap: 10px; align-items: center; font-size: 12px; margin-bottom: 8px; } .small { font-size: 11px; padding: 3px 8px; }
   .fx { border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; margin-bottom: 6px; background: var(--panel2); } .fx.off { opacity: .55; }

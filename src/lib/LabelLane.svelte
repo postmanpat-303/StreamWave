@@ -51,14 +51,14 @@
 </div>
 <style>
   .lane { position: relative; width: 100%; height: 56px; border-radius: 6px; background: #ffffff06; cursor: text; touch-action: none; overflow: hidden; }
-  .lane.active { box-shadow: inset 0 0 0 1px #19d3b055; }
-  .range { position: absolute; top: 0; bottom: 0; background: #ffb02018; border-left: 1px solid #ffb020; border-right: 1px solid #ffb020; pointer-events: none; }
-  .lab { position: absolute; display: flex; align-items: center; gap: 1px; border-left: 2px solid #ffb020; padding-left: 1px; z-index: 1; }
-  .lab input { font-size: 11px; padding: 1px 4px; background: #0e1117ee; color: #ffd27a; border: 1px solid #ffb02055; border-radius: 4px; min-width: 0; }
-  .lab input:focus { outline: 1px solid #ffb020; }
-  .pin, .del { font-size: 10px; padding: 0 3px; background: none; border: none; color: #ffb020; cursor: pointer; }
+  .lane.active { box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.33); }
+  .range { position: absolute; top: 0; bottom: 0; background: rgb(var(--warn-rgb) / 0.09); border-left: 1px solid var(--warn); border-right: 1px solid var(--warn); pointer-events: none; }
+  .lab { position: absolute; display: flex; align-items: center; gap: 1px; border-left: 2px solid var(--warn); padding-left: 1px; z-index: 1; }
+  .lab input { font-size: 11px; padding: 1px 4px; background: rgb(var(--bg-rgb) / 0.93); color: #ffd27a; border: 1px solid rgb(var(--warn-rgb) / 0.33); border-radius: 4px; min-width: 0; }
+  .lab input:focus { outline: 1px solid var(--warn); }
+  .pin, .del { font-size: 10px; padding: 0 3px; background: none; border: none; color: var(--warn); cursor: pointer; }
   .del { opacity: 0; } .lab:hover .del, .lab:focus-within .del { opacity: 0.8; }
-  .sel { position: absolute; top: 0; bottom: 0; background: #4da3ff30; border-left: 1px solid #7dbbff; border-right: 1px solid #7dbbff; pointer-events: none; }
+  .sel { position: absolute; top: 0; bottom: 0; background: rgb(var(--blue-rgb) / 0.19); border-left: 1px solid var(--blue-hi); border-right: 1px solid var(--blue-hi); pointer-events: none; }
   .cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; pointer-events: none; }
   .empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; color: #ffffff55; pointer-events: none; }
 </style>

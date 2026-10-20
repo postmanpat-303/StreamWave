@@ -56,16 +56,16 @@
 
 <style>
   .modal-back { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; z-index: 70; }
-  .modal { width: 520px; max-width: 92vw; max-height: 86vh; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .modal { width: 520px; max-width: 92vw; max-height: 86vh; overflow: auto; background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 16px; }
   h3 { margin: 0 0 10px; }
   .modes { display: flex; flex-direction: column; gap: 8px; }
   .opt { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer; margin: 0; }
-  .opt.sel { border-color: var(--accent); background: #19d3b012; }
+  .opt.sel { border-color: var(--accent); background: rgb(var(--accent-rgb) / 0.07); }
   .opt input { width: auto; }
   .pic { flex: none; width: 74px; height: 38px; display: flex; gap: 2px; padding: 3px; border-radius: 6px; background: #0003; }
-  .pic i { display: block; border-radius: 3px; background: #19d3b0aa; }
-  .pic.seq { align-items: center; } .pic.seq i { height: 14px; flex: 1; } .pic.seq i:nth-child(2) { flex: 1.6; background: #8b7bffaa; } .pic.seq i:nth-child(3) { flex: .7; background: #ffb020aa; }
-  .pic.stack { flex-direction: column; } .pic.stack i { height: 9px; } .pic.stack i:nth-child(1) { width: 60%; } .pic.stack i:nth-child(2) { width: 100%; background: #8b7bffaa; } .pic.stack i:nth-child(3) { width: 35%; background: #ffb020aa; }
+  .pic i { display: block; border-radius: 3px; background: rgb(var(--accent-rgb) / 0.67); }
+  .pic.seq { align-items: center; } .pic.seq i { height: 14px; flex: 1; } .pic.seq i:nth-child(2) { flex: 1.6; background: rgb(var(--purple-rgb) / 0.67); } .pic.seq i:nth-child(3) { flex: .7; background: rgb(var(--warn-rgb) / 0.67); }
+  .pic.stack { flex-direction: column; } .pic.stack i { height: 9px; } .pic.stack i:nth-child(1) { width: 60%; } .pic.stack i:nth-child(2) { width: 100%; background: rgb(var(--purple-rgb) / 0.67); } .pic.stack i:nth-child(3) { width: 35%; background: rgb(var(--warn-rgb) / 0.67); }
   .from { display: flex; gap: 14px; align-items: center; margin: 12px 0 6px; } .chk { display: flex; gap: 6px; align-items: center; margin: 0; font-size: 13px; } .chk input { width: auto; }
   .files { list-style: none; margin: 8px 0; padding: 0; max-height: 220px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
   .files li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid var(--line); font-size: 13px; } .files li:last-child { border-bottom: none; }

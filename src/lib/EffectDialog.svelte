@@ -35,7 +35,7 @@
 </div>
 <style>
   .back { position: fixed; inset: 0; background: #0007; display: grid; place-items: center; z-index: 90; }
-  .dlg { width: 420px; max-height: 85vh; overflow: auto; outline: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; box-shadow: 0 16px 48px #000a; }
+  .dlg { width: 420px; max-height: 85vh; overflow: auto; outline: none; background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 16px 18px; box-shadow: 0 16px 48px #000a; }
   .small { font-size: 12px; } h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   h3 { margin: 0 0 4px; } .scope { color: var(--muted); margin-bottom: 10px; }
   .prm { margin: 8px 0; } .pl { display: flex; justify-content: space-between; font-size: 12px; } .val { color: var(--accent); }

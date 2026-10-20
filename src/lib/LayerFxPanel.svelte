@@ -106,16 +106,16 @@
 </div>
 
 <style>
-  .sheet { position: fixed; top: 70px; right: 16px; bottom: 16px; width: 340px; overflow-y: auto; z-index: 65; background: var(--panel); border: 1px solid #19d3b066; border-radius: 12px; padding: 14px; box-shadow: 0 12px 40px #000a; }
+  .sheet { position: fixed; top: 70px; right: 16px; bottom: 16px; width: 340px; overflow-y: auto; z-index: 65; background: var(--hw-bg); border: 1px solid rgb(var(--accent-rgb) / 0.40); border-radius: 12px; padding: 14px; box-shadow: 0 12px 40px #000a; }
   .hdr { display: flex; align-items: center; justify-content: space-between; } h3 { margin: 0; } .x { background: none; border: none; color: var(--muted); font-size: 15px; }
   .who { font-size: 12px; margin: 8px 0 4px; overflow-wrap: anywhere; }
-  .own { font-size: 11px; color: #ffd27a; background: #ffb02012; border: 1px solid #ffb02044; border-radius: 8px; padding: 6px 8px; }
+  .own { font-size: 11px; color: #ffd27a; background: rgb(var(--warn-rgb) / 0.07); border: 1px solid rgb(var(--warn-rgb) / 0.27); border-radius: 8px; padding: 6px 8px; }
   .flow { font-size: 11px; color: var(--muted); margin: 8px 0; } .flow b { color: var(--accent); }
   .empty { font-size: 12px; color: var(--muted); padding: 10px; border: 1px dashed var(--line); border-radius: 8px; text-align: center; }
   .layers { list-style: none; margin: 6px 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .layer { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 9px; padding: 4px 6px; background: var(--panel2); outline: none; position: relative; }
-  .layer:focus-visible { box-shadow: 0 0 0 2px #4da3ff; } .layer.sel { border-color: var(--accent); } .layer.off { opacity: .55; } .layer.dragging { opacity: .4; }
-  .layer.dropabove::before, .layer.dropbelow::after { content: ""; position: absolute; left: 4px; right: 4px; height: 3px; background: #4da3ff; border-radius: 2px; }
+  .layer:focus-visible { box-shadow: 0 0 0 2px var(--blue); } .layer.sel { border-color: var(--accent); } .layer.off { opacity: .55; } .layer.dragging { opacity: .4; }
+  .layer.dropabove::before, .layer.dropbelow::after { content: ""; position: absolute; left: 4px; right: 4px; height: 3px; background: var(--blue); border-radius: 2px; }
   .layer.dropabove::before { top: -5px; } .layer.dropbelow::after { bottom: -5px; }
   .grip { cursor: grab; color: var(--muted); padding: 0 3px; user-select: none; touch-action: none; letter-spacing: -2px; }
   .num { font-size: 10px; color: var(--muted); width: 14px; text-align: center; font-variant-numeric: tabular-nums; }

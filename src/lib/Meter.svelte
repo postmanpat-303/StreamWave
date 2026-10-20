@@ -21,7 +21,7 @@
   @keyframes flash { 50% { box-shadow: 0 0 0 3px var(--rec); } }
   .row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 11px; color: var(--muted); }
   .bar { position: relative; flex: 1; height: 12px; background: #0a0d12; border-radius: 6px; overflow: hidden; }
-  .fill { height: 100%; background: linear-gradient(90deg, #19d3b0 0%, #19d3b0 70%, #ffb020 85%, #ff3b5c 100%); background-size: 100vw 100%; transition: width 40ms linear; }
+  .fill { height: 100%; background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 70%, var(--warn) 85%, var(--rec) 100%); background-size: 100vw 100%; transition: width 40ms linear; }
   .hold { position: absolute; top: 0; width: 2px; height: 100%; background: #fff; }
   .scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); padding-left: 16px; }
 </style>

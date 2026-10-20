@@ -4,7 +4,7 @@
   type Phase = "down" | "move";
   /** An audio clip drawn on this lane (gaps are not listed). `fx` = active Layering Effects. */
   type LaneClip = { a: number; b: number; index: number; name: string; fx: number };
-  let { peaks, duration, selection = null, progress = 0, color = "#19d3b0", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic",
+  let { peaks, duration, selection = null, progress = 0, color = "#2ec4b6", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic",
         clips = [], movingIndex = null, onselect, onpickclip, oncontext, ongrab, onlayers }:
     { peaks: number[]; duration: number; selection?: { a: number; b: number } | null; progress?: number; color?: string; active?: boolean; markers?: { id: number; time: number; label: string }[];
       bounds?: { t: number; split: boolean }[]; spec?: Spec | null; specScale?: SpecScale; specColors?: SpecColors;
@@ -102,18 +102,18 @@
 <style>
   .wrap { position: relative; width: 100%; height: 90px; border-radius: 6px; overflow: hidden; }
   .wrap.spec { height: 140px; }
-  .wrap.active { box-shadow: inset 0 0 0 1px #19d3b055; }
+  .wrap.active { box-shadow: inset 0 0 0 1px rgb(var(--accent-rgb) / 0.33); }
   canvas { display: block; cursor: text; touch-action: none; }
-  .sel { position: absolute; top: 0; bottom: 0; background: #4da3ff40; border-left: 1px solid #7dbbff; border-right: 1px solid #7dbbff; pointer-events: none; }
-  .mk { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #ffb020; pointer-events: none; }
-  .mk span { position: absolute; top: 0; left: 2px; font-size: 9px; color: #ffb020; white-space: nowrap; background: #0e1117cc; padding: 0 3px; border-radius: 3px; }
+  .sel { position: absolute; top: 0; bottom: 0; background: rgb(var(--blue-rgb) / 0.25); border-left: 1px solid var(--blue-hi); border-right: 1px solid var(--blue-hi); pointer-events: none; }
+  .mk { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed var(--warn); pointer-events: none; }
+  .mk span { position: absolute; top: 0; left: 2px; font-size: 9px; color: var(--warn); white-space: nowrap; background: rgb(var(--bg-rgb) / 0.80); padding: 0 3px; border-radius: 3px; }
   .cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; pointer-events: none; }
   .clipbar { position: absolute; top: 0; height: 16px; display: flex; align-items: center; gap: 4px; padding: 0 3px 0 5px; box-sizing: border-box; min-width: 4px;
-    background: #19d3b02a; border: 1px solid #19d3b055; border-radius: 4px 4px 0 0; cursor: grab; overflow: hidden; touch-action: none; z-index: 2; }
-  .clipbar:hover { background: #19d3b044; } .clipbar.moving { opacity: .35; cursor: grabbing; }
-  .cn { flex: 1; min-width: 0; font-size: 9.5px; color: #cfeee7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-  .lfx { flex: none; font-size: 10px; line-height: 12px; padding: 0 4px; border-radius: 3px; background: #0e1117cc; border: 1px solid #ffffff33; color: #cfeee7; cursor: pointer; }
-  .lfx.has { color: #0e1117; background: #19d3b0; border-color: #19d3b0; font-weight: 700; }
-  .clipdim { position: absolute; top: 0; bottom: 0; background: #0e1117aa; pointer-events: none; z-index: 1; }
+    background: rgb(var(--accent-rgb) / 0.16); border: 1px solid rgb(var(--accent-rgb) / 0.33); border-radius: 4px 4px 0 0; cursor: grab; overflow: hidden; touch-action: none; z-index: 2; }
+  .clipbar:hover { background: rgb(var(--accent-rgb) / 0.27); } .clipbar.moving { opacity: .35; cursor: grabbing; }
+  .cn { flex: 1; min-width: 0; font-size: 9.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .lfx { flex: none; font-size: 10px; line-height: 12px; padding: 0 4px; border-radius: 3px; background: rgb(var(--bg-rgb) / 0.80); border: 1px solid #ffffff33; color: var(--text); cursor: pointer; }
+  .lfx.has { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 700; }
+  .clipdim { position: absolute; top: 0; bottom: 0; background: rgb(var(--bg-rgb) / 0.67); pointer-events: none; z-index: 1; }
   .tick { position: absolute; left: 2px; transform: translateY(-50%); font-size: 9px; color: #fff; background: #0008; padding: 0 3px; border-radius: 3px; pointer-events: none; }
 </style>

@@ -25,8 +25,8 @@
   {/if}
 </div>
 <style>
-  .panel { background: linear-gradient(160deg, #19d3b014, var(--panel)); border: 1px solid #19d3b055; border-radius: 12px; padding: 14px; }
-  .big { width: 100%; padding: 14px; font-size: 17px; font-weight: 700; border-radius: 12px; background: linear-gradient(90deg, #19d3b0, #4da3ff); color: #021; border: none; }
+  .panel { background: linear-gradient(160deg, rgb(var(--accent-rgb) / 0.08), var(--panel)); border: 1px solid rgb(var(--accent-rgb) / 0.33); border-radius: 12px; padding: 14px; }
+  .big { width: 100%; padding: 14px; font-size: 17px; font-weight: 700; border-radius: 12px; background: linear-gradient(90deg, var(--accent), var(--blue)); color: #021; border: none; }
   .big:disabled { opacity: .5; }
   .seg { display: flex; gap: 4px; margin: 8px 0; } .seg button { flex: 1; font-size: 12px; padding: 5px; } .seg .sel { background: var(--accent); color: #002; border-color: var(--accent); }
   .ab { width: 100%; font-size: 12px; } .ab.b { border-color: var(--warn); color: var(--warn); }
