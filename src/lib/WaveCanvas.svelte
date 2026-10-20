@@ -176,7 +176,8 @@
   .fh.set { background: var(--accent); opacity: .9; } .wrap:hover .fh { opacity: 1; }
   .xf { position: absolute; top: 16px; bottom: 0; pointer-events: none; z-index: 1; background: rgb(var(--accent-rgb) / .10); border-left: 1px dashed rgb(var(--accent-rgb) / .5); border-right: 1px dashed rgb(var(--accent-rgb) / .5); box-sizing: border-box; }
   .xf .o { stroke: var(--blue-hi); } .xf .i { stroke: var(--accent); }
-  .xh { position: absolute; bottom: 3px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 4px; font-size: 9.5px; font-weight: 700;
+  /* kept above the bottom 14px: WebKitGTK overlay scrollbars sit there when the timeline is zoomed */
+  .xh { position: absolute; bottom: 16px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 4px; font-size: 9.5px; font-weight: 700;
     background: rgb(var(--bg-rgb) / .85); border: 1px solid #ffffff40; color: var(--text); cursor: ew-resize; box-shadow: 0 1px 3px #000a; touch-action: none; opacity: .6; }
   .xh svg path { stroke: currentColor; stroke-width: 1.6; fill: none; } .wrap:hover .xh, .xh.set { opacity: 1; }
   .xh.set { border-color: var(--accent); color: var(--accent); }
