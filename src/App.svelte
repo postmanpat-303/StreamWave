@@ -1089,7 +1089,7 @@
           onchange={(v) => laneXfade(xm.trackId, xm.index, v)} />
         <div class="xfside">
           <Dropdown caption="Curve" value={xfClip.c.xfade_curve ?? "equal_power"} onchange={(e) => laneXfade(xm.trackId, xm.index, xfClip.ms || Math.min(300, xfClip.max), e.currentTarget.value as E.XfadeCurve)}>
-            <option value="equal_power">Equal power (different material)</option><option value="linear">Linear (same material / room tone)</option>
+            <option value="equal_power" title="Best between different material: keeps the loudness steady">Equal power</option><option value="linear" title="Best between takes of the same material or room tone">Linear</option>
           </Dropdown>
           <div class="small">{xfClip.handles >= (xfClip.ms || 1) ? "Uses spare audio around the cut: nothing moves." : `Spare audio for ${xfClip.handles} ms; longer crossfades overlap the clips and move later audio earlier.`}</div>
           <button class="pill small" disabled={!xfClip.ms} onclick={() => { laneXfade(xm.trackId, xm.index, 0); xfMenu = null; }}>Remove crossfade</button>
