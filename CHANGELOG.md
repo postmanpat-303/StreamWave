@@ -2,6 +2,21 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased (0.11.1)
+
+### Fixed
+- **New / Open / Close / Recover no longer leave the old project playing.** Playback stops (with a short fade) after you confirm "Discard unsaved changes?", the transport and playhead reset, and the old project's audio is freed. If a recording is running you are asked first; the take is saved and added to the old project before it closes. Cancelling any prompt or the Open dialog changes nothing.
+- New **File > Close Project** (Ctrl+W).
+
+### Follow playhead
+- The timeline scrolls smoothly to keep the playhead in view while playing or recording. Toggle it with the **FOLLOW** LED on the transport row, **View > Follow Playhead** or **F**. It is on by default and remembered.
+- Scrolling or dragging in the timeline pauses following. It resumes when the playhead is back in view, or on the next Play. The ruler and the preview move with it.
+
+### Faster Play and Stop
+- Play now starts in about 30 ms instead of 120–1000 ms. The output stream stays open in shared mode, so other apps can still use the device. Unchanged audio is not re-rendered or re-measured, and imported audio is kept decoded.
+- Stop fades out over 6 ms instead of cutting (no click) and is ready for the next Play at once.
+- While a track plays, its waveform no longer redraws 30 times a second, which keeps the window responsive.
+
 ## 0.11.0 (2026-10-20)
 
 ### New look
