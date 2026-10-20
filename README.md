@@ -83,6 +83,8 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | 📏 **Timeline ruler & preview** *(new in 0.11.0)* | A zoom-aware time ruler above the tracks with playhead, selection and markers (click or drag to move the cursor), and a preview strip of the whole track with START/END/SEL readouts, **Zoom to selection** and **Fit**. |
 | 🧩 **Effects Layer workspace** *(new in 0.11.0)* | Switch the side panel to a big effects editor: a collapsible list of the track's effects and the current clip's layers, the signal flow, and colour-coded modules with large knobs, heard live. **Settings** brings the classic panel back as it was. |
 | 🔀 **Crossfades & fade handles** *(new in 0.11.0)* | Drag a clip's corner to fade it, or the ⨯ handle at a cut to crossfade two neighbouring clips (equal power or linear, length knob). Centred on the cut using spare audio, so nothing moves; plays exactly as it exports. Limits: neighbouring clips only, no master bus. |
+| 🎯 **Follow playhead** *(new in 0.11.1)* | The timeline scrolls smoothly to keep the playhead in view while playing or recording. Toggle it with the **FOLLOW** LED, View → Follow Playhead or **F** (on by default). Scrolling or dragging pauses it until the playhead is back in view or you press Play. |
+| ⚡ **Instant Play / Stop** *(new in 0.11.1)* | Play starts in about 30 ms: the output stays open in shared mode and unchanged audio isn't re-rendered. Stop fades out in 6 ms, so there's no click. New / Open / Close now stop playback of the old project first. |
 | 🎧 **Virtual output hint** *(new in 0.9.0)* | StreamWave recognises virtual audio devices (VB-CABLE, VoiceMeeter, BlackHole on Mac) in the output list and explains how to send its sound into OBS, Discord or Zoom. The user guide has the setup steps. |
 
 ## 📸 Screenshots
@@ -126,7 +128,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
 ### Linux (x86_64)
-Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.0`):
+Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.1`):
 
 | Distro | File | Install |
 |---|---|---|
@@ -186,6 +188,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **Auto-chapters**: chapter markers from topic changes and OBS scenes, exported to YouTube timestamps
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
 - [ ] Multi-track mixdown export, free overlapping clips (3+ stacked), a master/output effect bus
+- [x] Follow playhead, near-instant Play/Stop, stop playback when switching projects (0.11.1)
 - [x] Hardware-style look, timeline ruler, selected-audio preview, Effects Layer workspace, crossfades (0.11.0)
 - [x] Multi-file import arrangement, clip moving across tracks, per-clip Layering Effects (0.10.0)
 - [x] In-app update check (0.6.0)

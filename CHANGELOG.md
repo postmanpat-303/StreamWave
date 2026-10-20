@@ -2,7 +2,7 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased (0.11.1)
+## 0.11.1 (2026-10-20)
 
 ### Fixed
 - **New / Open / Close / Recover no longer leave the old project playing.** Playback stops (with a short fade) after you confirm "Discard unsaved changes?", the transport and playhead reset, and the old project's audio is freed. If a recording is running you are asked first; the take is saved and added to the old project before it closes. Cancelling any prompt or the Open dialog changes nothing.

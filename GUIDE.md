@@ -58,6 +58,8 @@ Tracks are lists of **clips** that point into the source files using start/end o
 | Select all (every track) | Ctrl+A |
 | Undo / Redo | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z (full command history, 500 steps) |
 | Play / Pause | Space (plays the selection if there is one, otherwise from the cursor) |
+| Stop | Esc (while playing) |
+| Follow playhead on/off | F (also View → Follow Playhead and the **FOLLOW** LED) |
 | Record | R |
 | Import / Export WAV | Ctrl+I / Ctrl+E |
 **Label tracks:** use **Edit → New Label Track**, or press Ctrl+B and one is created for you. Click a label's text to edit it, and click ▾ to select its range. Delete a label with ✕, or with Backspace in an empty label. **File → Export Labels…** saves Audacity-compatible text (`start⇥end⇥text`). **File → Import Labels…** reads it back. **→ Markers** copies labels to project markers, which become chapters in exports and Send Back to Video.
@@ -94,7 +96,8 @@ Studio Sound analyses the selected track and builds an editable effect chain:
 - **🎬 Send back to video:** mixes the OBS tracks with their edits and effects and puts the audio into a **copy** of the original video. The picture is copied with `-c:v copy` (never re-encoded), and markers become **chapters** in MKV/MP4/MOV/WebM. Audio codec: FLAC in MKV, AAC in MP4/MOV, Opus in WebM.
 
 ## Projects
-- **.twt project files** (JSON): tracks, clips, effect chains and learned noise profiles. Ctrl+S save, Ctrl+Shift+S save as, Ctrl+O open, Ctrl+N new. The 📁 menu lists recent projects.
+- **.twt project files** (JSON): tracks, clips, effect chains and learned noise profiles. Ctrl+S save, Ctrl+Shift+S save as, Ctrl+O open, Ctrl+N new, Ctrl+W close. The 📁 menu lists recent projects.
+- **New / Open / Close / Recover** first stop playback of the current project (after you confirm "Discard unsaved changes?"). If you are recording, you are asked first, and the take is saved and added to the current project before it closes. Cancel leaves everything as it was.
 - Saves are atomic: the file is written to a temp file, synced, then renamed, and the previous version is kept as `.twt.bak`.
 - **Autosave** every 30 s to the app config folder. After a crash you're offered **Recover / Discard** at the next launch.
 - Source audio is referenced by path, not copied. Waveforms are rebuilt when a project opens, and missing files are reported.
@@ -160,6 +163,8 @@ Click **◧** on a clip's title bar (the number shows how many layers are on), o
 - The **ruler** above the tracks scrolls with them and picks its steps from the zoom level (m:ss, or h:mm:ss on long projects). It shows the playhead, cursor, selection and markers. Click or drag on it to move the cursor; while playing, that seeks.
 - The **preview strip** under the recorder shows the whole active track with the selection, the playhead and a box for the part of the timeline in view, plus LEN / START / END / SEL readouts. Click to move the cursor, drag to select, **Zoom to selection** to make the selection fill the timeline, **Fit** to see everything.
 - There is no bars/beats ruler: projects have no tempo.
+- **Follow playhead** (on by default): while playing or recording, the timeline scrolls smoothly so the playhead stays in view, about a third from the left. Turn it off with the **FOLLOW** LED above the ruler, **View → Follow Playhead** or **F**; the choice is remembered. Scrolling or dragging in the timeline pauses following ("Follow paused" shows). It resumes when the playhead is back in view or when you press Play.
+- **Play and Stop** respond at once: the audio output stays open (shared mode, so other apps can still use the device) and unchanged audio is not re-rendered. Stop fades out over 6 ms instead of cutting off.
 
 ## Effects Layer workspace
 The **Settings | Effects Layer** switch in the header swaps the side panel for a large effects editor. Switching back brings the Settings panel back exactly as it was; neither the project nor playback is touched.
