@@ -50,6 +50,11 @@ Tracks are lists of **clips** that point into the source files using start/end o
 | Delete selection | Del or Backspace |
 | Move a clip | drag its **title bar** (the strip with its name) along the track or onto another track; Alt = no snapping, Esc cancels |
 | Layering Effects | the **◧** button on a clip's title bar, or right-click the clip → **Layering Effects…** |
+| Move the cursor / seek | click or drag on the **time ruler** above the tracks, or in the **preview strip**; with the ruler focused ←/→ step (Shift = bigger), Home/End |
+| Zoom to the selection | **Zoom to selection** in the preview strip (**Fit** shows everything) |
+| Fade a clip in/out | drag the small square at the clip's top-left / top-right corner |
+| Crossfade two clips | drag the **⨯** handle at the bottom of the cut outwards, or click it for length, curve and remove |
+| Switch workspace | **Settings / Effects Layer** in the header |
 | Select all (every track) | Ctrl+A |
 | Undo / Redo | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z (full command history, 500 steps) |
 | Play / Pause | Space (plays the selection if there is one, otherwise from the cursor) |
@@ -72,7 +77,7 @@ Tests: `npm test` (edit model, effects chain, project files) and `cargo test` in
 ## Effects (non-destructive, live)
 Each track has an **effect chain** that is saved as settings only. It runs **live during playback**: slider moves, bypass and A/B are heard within ~0.1 s with no restart. Export uses the same engine, so the exported file matches what you heard. Effects are never baked into the source files.
 Effects: Gain, Equalizer (low cut, low shelf, 3 bands, high shelf), Compressor, Noise gate, Noise reduction (learns from a selection of background noise), Normalize (peak), Loudness (target LUFS, EBU R128), Fade in/out, Limiter.
-The side panel has sliders, on/off (bypass) toggles, up/down to reorder, and an **A/B** button to hear the original. One-click presets: *Podcast voice, Clean up noise, Streaming -14 LUFS, Broadcast -16 LUFS, Warm voice*.
+The side panel has a rack of colour-coded effect modules with **knobs**, on/off (bypass) LED toggles, up/down to reorder, and an **A/B** button to hear the original. For a bigger editor, switch to the **Effects Layer** workspace (see below). **Knobs:** drag up/right (or scroll, or use the arrow keys) to turn, **Shift** for fine steps, double-click or Delete to reset; each knob shows its value and range. One-click presets: *Podcast voice, Clean up noise, Streaming -14 LUFS, Broadcast -16 LUFS, Warm voice*.
 Every change can be undone with Ctrl+Z. "Measure loudness" shows the processed track's LUFS.
 Zoom: Ctrl+scroll or `+` / `-` (1-12x, scroll sideways).
 
@@ -150,6 +155,29 @@ Click **◧** on a clip's title bar (the number shows how many layers are on), o
 - **Each clip owns its layers.** Copy/paste gives the copy its own stack, and splitting a clip gives each piece its own copy. Changing one never changes another.
 - Changes are heard live while the track plays, and export renders through the same code. Each change is one undo step.
 - Projects using clip layers or free clip positions are saved as `.twt` version 2. Older StreamWave versions decline to open them rather than mis-reading them.
+
+## Timeline ruler and preview
+- The **ruler** above the tracks scrolls with them and picks its steps from the zoom level (m:ss, or h:mm:ss on long projects). It shows the playhead, cursor, selection and markers. Click or drag on it to move the cursor; while playing, that seeks.
+- The **preview strip** under the recorder shows the whole active track with the selection, the playhead and a box for the part of the timeline in view, plus LEN / START / END / SEL readouts. Click to move the cursor, drag to select, **Zoom to selection** to make the selection fill the timeline, **Fit** to see everything.
+- There is no bars/beats ruler: projects have no tempo.
+
+## Effects Layer workspace
+The **Settings | Effects Layer** switch in the header swaps the side panel for a large effects editor. Switching back brings the Settings panel back exactly as it was; neither the project nor playback is touched.
+- **Left list**: the active track's effects (*Track*) and the layers of the clip under the cursor (*Clip*), in processing order. Click an entry to edit it. « collapses the list to a narrow strip of coloured dots and » expands it again; on small windows it collapses by itself and opens over the editor.
+- **Signal flow** at the top: clip layers → clip gain/fades → track effects → mix.
+- **Module**: the selected effect with large knobs in its own colour, an on/off LED, run earlier/later and remove.
+- At the bottom: add a track effect or a clip layer, and the track presets.
+- Track-effect knobs are heard live while you turn them (one undo step when you let go). Clip-layer changes are applied when you let go. It is the same data as the rack and the ◧ panel, so nothing is processed twice.
+
+## Fades and crossfades
+- **Fades**: drag the small square at a clip's top-left (fade-in) or top-right (fade-out) corner. The fade shape is drawn over the waveform. Older projects keep their S-curve fades.
+- **Crossfades** blend two neighbouring clips at a cut. Drag the **⨯** handle at the bottom of the cut outwards to set the length, or click it for a panel with a **Length** knob, the **Curve** and **Remove crossfade**:
+  - **Equal power**: for different material (keeps the loudness steady through the blend).
+  - **Linear**: for the same material or room tone.
+- A crossfade is centred on the cut and uses the audio just beyond each clip's edge, so nothing on the timeline moves. If there is no spare audio (two whole files back to back), the clips are made to overlap by the missing amount: later audio moves earlier, and a message says by how much.
+- Playback, the mix and export use the same render code, so a crossfade sounds the same everywhere. Split, join, undo/redo, save and reopen keep it; a cut or move that changes which clip it fades from removes it.
+- Projects with crossfades or non-default fade shapes are saved as `.twt` version 3; StreamWave 0.10 and older refuse those with a clear message.
+- **Limits**: crossfades only between neighbouring clips on one track (no stacking of three or more clips); no master/output effect bus; Normalize/Loudness clip layers on a crossfaded clip measure the extra crossfade audio too; playing a selection that starts inside a crossfade skips the first part of the fade.
 
 ## Editing extras
 - **✂ Silences** (on a track): scans for pauses below the noise floor + 8 dB (min 250 ms, with 80 ms padding so word tails survive). Review the count, then **Trim N silences** cuts them in one undoable step.

@@ -72,7 +72,7 @@ How tracks, clips, samples, markers, projects and effects fit together (state as
   refuse them with "made by a newer StreamWave" instead of failing on an empty source path. Projects without
   them are still written as version 1.
 
-## Restyle branch additions (crossfades, effect levels, workspaces)
+## 0.11.0 additions (crossfades, effect levels, workspaces)
 
 ### Where each effect applies
 | Level | Edited in | Runs | Notes |

@@ -38,7 +38,7 @@
 </p>
 
 <p align="center">
-  <a href="assets/screenshots/01-main.png"><img src="assets/screenshots/01-main.png" alt="StreamWave main window: the big record button with live input meters, a podcast episode with Host mic, Guest (Discord) and Music bed tracks, chapter markers, a Show notes label track, and the Studio Sound, effects and OBS panels on the right" width="100%"></a>
+  <a href="assets/screenshots/01-main.png"><img src="assets/screenshots/01-main.png" alt="StreamWave main window in the new hardware look: the big record button in a bezel with LED input meters, the selected-audio preview strip, a time ruler with chapter markers, Host mic, Guest (Discord) and Music bed tracks with a crossfade at a cut, and the Effects rack with colour-coded modules on the right" width="100%"></a>
 </p>
 
 ## ▶ Watch the promo
@@ -79,24 +79,35 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | 📥 **Multi-file import** *(new in 0.10.0)* | Import or drop several files at once and choose: **one after another on one track** (each starting exactly where the last ends, at the cursor or 0:00) or **one track per file**, all lined up. Mixed formats and sample rates are fine, Cancel changes nothing, and one Ctrl+Z undoes it all. |
 | ↔️ **Move clips** *(new in 0.10.0)* | Drag a clip by its title bar along the timeline or onto another track, even past the end. Ghost, target highlight and exact time readout while dragging; snaps to markers, clip edges and the cursor (Alt = free). Overlapping audio is refused. Positions are whole samples, so nothing drifts. |
 | ◧ **Layering Effects** *(new in 0.10.0)* | Give a single clip its own stack of effects: add, bypass, edit and drag (or Alt+↑/↓) to reorder. The list order is the processing order, running before the clip's gain/fades and the track effects. Each clip owns its stack; copies and split pieces get their own. Heard live, exported identically. |
+| 🎛 **New hardware look** *(new in 0.11.0)* | Dark brushed panels, knurled knobs with an amber tick ring, LED meters, pill buttons and LED toggles. Every effect has its own colour, and the rack, Layering Effects and effect dialogs all use knobs (drag, scroll or arrow keys; Shift = fine; double-click resets). |
+| 📏 **Timeline ruler & preview** *(new in 0.11.0)* | A zoom-aware time ruler above the tracks with playhead, selection and markers (click or drag to move the cursor), and a preview strip of the whole track with START/END/SEL readouts, **Zoom to selection** and **Fit**. |
+| 🧩 **Effects Layer workspace** *(new in 0.11.0)* | Switch the side panel to a big effects editor: a collapsible list of the track's effects and the current clip's layers, the signal flow, and colour-coded modules with large knobs, heard live. **Settings** brings the classic panel back as it was. |
+| 🔀 **Crossfades & fade handles** *(new in 0.11.0)* | Drag a clip's corner to fade it, or the ⨯ handle at a cut to crossfade two neighbouring clips (equal power or linear, length knob). Centred on the cut using spare audio, so nothing moves; plays exactly as it exports. Limits: neighbouring clips only, no master bus. |
 | 🎧 **Virtual output hint** *(new in 0.9.0)* | StreamWave recognises virtual audio devices (VB-CABLE, VoiceMeeter, BlackHole on Mac) in the output list and explains how to send its sound into OBS, Discord or Zoom. The user guide has the setup steps. |
 
 ## 📸 Screenshots
 
-*Real screenshots of StreamWave 0.8.3 on Linux, using a demo episode with self-generated voice and music. Click any image for full size.*
+*Real screenshots of StreamWave 0.11.0 on Linux (the Audacity import one is from 0.8.3), using a demo episode with self-generated voice and music. Click any image for full size.*
 
 <table>
 <tr>
-<td width="50%" valign="top"><a href="assets/screenshots/02-context-menu.png"><img src="assets/screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound" width="100%"></a><br><b>Right-click anything.</b> Cut, split, label or apply an effect straight to the selection.</td>
-<td width="50%" valign="top"><a href="assets/screenshots/03-spectrogram.png"><img src="assets/screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view, zoomed in, showing speech harmonics and a low hum band, with chapter markers above" width="100%"></a><br><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/08-effects-layer.png"><img src="assets/screenshots/08-effects-layer.png" alt="Effects Layer workspace: a list of the Host mic track's effects and the clip's layers on the left, a signal-flow strip, and the Equalizer module with colour-coded knobs for low cut, shelves and three bands"></a><br><b>Effects Layer workspace.</b> Every effect of the track and the clip under the cursor, with big colour-coded knobs, heard live.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/09-crossfade.png"><img src="assets/screenshots/09-crossfade.png" alt="Zoomed timeline with a crossfade between two Host mic clips: the fade curves drawn across the cut and the crossfade panel open with a Length knob at 1252 ms, the curve set to Equal power and a Remove crossfade button"></a><br><b>Crossfades.</b> Drag or click the handle at a cut: equal power or linear, centred on the cut, plays exactly as it exports.</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><a href="assets/screenshots/04-effects.png"><img src="assets/screenshots/04-effects.png" alt="Effects panel for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup sliders), Loudness and Limiter" width="100%"></a><br><b>Live effects chain.</b> One-click presets build an editable chain that you hear instantly while it plays.</td>
-<td width="50%" valign="top"><a href="assets/screenshots/05-aup3-import.png"><img src="assets/screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed" width="100%"></a><br><b>Bring your Audacity projects.</b> <code>.aup3</code> tracks and labels come across; your original file is only read.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/02-context-menu.png"><img src="assets/screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound"></a><br><b>Right-click anything.</b> Cut, split, label, open Layering Effects or apply an effect straight to the selection.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/10-effect-dialog.png"><img src="assets/screenshots/10-effect-dialog.png" alt="Compressor dialog for a selection with knobs for threshold, ratio, attack, release and makeup, and Apply, Add to track effects instead and Cancel buttons"></a><br><b>Knobs, not sliders.</b> Drag, scroll or use the arrow keys; Shift for fine steps, double-click to reset.</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><a href="assets/screenshots/06-export.png"><img src="assets/screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="100%"></a><br><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</td>
-<td width="50%" valign="top"><a href="assets/screenshots/07-about.png"><img src="assets/screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.3, created by Del (postmanpat), a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="100%"></a><br><b>Free and open source.</b> Made by Del (postmanpat). If it saves you time, <a href="https://buymeacoffee.com/postmanpat">buy me a coffee</a> ☕</td>
+<td width="50%" valign="top"><a href="assets/screenshots/04-effects.png"><img src="assets/screenshots/04-effects.png" alt="Effects rack for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup knobs), Loudness and Limiter, each in its own colour"></a><br><b>Live effects chain.</b> One-click presets build an editable chain you hear instantly while it plays.</td>
+<td width="50%" valign="top"><a href="assets/screenshots/03-spectrogram.png"><img src="assets/screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view with a log frequency scale, showing speech harmonics, with chapter markers and the time ruler above"></a><br><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/05-aup3-import.png"><img src="assets/screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed"></a><br><b>Bring your Audacity projects.</b> Tracks and labels come across from .aup3; your original file is only read. <small>(0.8.3 screenshot)</small></td>
+<td width="50%" valign="top"><a href="assets/screenshots/06-export.png"><img src="assets/screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex"></a><br><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="assets/screenshots/07-about.png"><img src="assets/screenshots/07-about.png" alt="About StreamWave dialog: version 0.11.0, created by Del (postmanpat), a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link"></a><br><b>Free and open source.</b> Made by Del (postmanpat), MIT licensed, with a Buy me a coffee button if it saves you time.</td>
 </tr>
 </table>
 
@@ -115,7 +126,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
 ### Linux (x86_64)
-Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.10.0`):
+Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.0`):
 
 | Distro | File | Install |
 |---|---|---|
@@ -174,7 +185,8 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **Voice / music separation**: pull your voice out of a stream recording with game audio or music
 - [ ] **Auto-chapters**: chapter markers from topic changes and OBS scenes, exported to YouTube timestamps
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
-- [ ] Multi-track mixdown export, crossfades and overlapping clips
+- [ ] Multi-track mixdown export, free overlapping clips (3+ stacked), a master/output effect bus
+- [x] Hardware-style look, timeline ruler, selected-audio preview, Effects Layer workspace, crossfades (0.11.0)
 - [x] Multi-file import arrangement, clip moving across tracks, per-clip Layering Effects (0.10.0)
 - [x] In-app update check (0.6.0)
 - [x] Audacity 3 (`.aup3`) project import (0.7.0)
@@ -204,7 +216,7 @@ The Windows installer includes it. On Linux, install it from your distro. On Mac
 
 **Can StreamWave replace Audacity?**
 If you've used Audacity, you'll feel at home, with live effects, OBS sync and recordings that survive a crash.
-For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing (StreamWave shows a spectrogram but doesn't edit in it), macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave can select and edit several tracks together, move clips between them (0.10.0) and play them as a mix (0.9.0), but it exports one track at a time rather than mixing down a full multitrack session.
+For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing (StreamWave shows a spectrogram but doesn't edit in it), macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave can select and edit several tracks together, move clips between them (0.10.0), crossfade neighbouring clips (0.11.0) and play them as a mix (0.9.0), but it exports one track at a time rather than mixing down a full multitrack session.
 You can bring existing work across: **File → Import Audacity Project…** (or drag an `.aup3` onto the window) reads Audacity 3 projects. Tracks, names, clip positions and trims, the audio itself (16-bit, 24-bit and 32-bit float), track gain, pan, mute and solo, clip envelopes and labels (as markers) come across. Audacity effects and note/time tracks are skipped, and StreamWave tells you exactly what it left out. Your `.aup3` file is opened read-only and never changed; the audio is copied into WAV files next to your StreamWave project (or into your recordings folder under *Audacity imports* if the project isn't saved yet).
 *Audacity® is a trademark of its respective owners. StreamWave is an independent project and isn't affiliated with or endorsed by Audacity or Muse Group. The importer was written from scratch and contains no Audacity code.*
 
