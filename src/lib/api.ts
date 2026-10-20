@@ -1,7 +1,8 @@
 import type { Aup3Result } from "./aup3Import";
 import { invoke } from "@tauri-apps/api/core";
 import type { Effect } from "./fx";
-type ClipArg = { src: string; start: number; end: number; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; gap?: boolean; fx?: { bypass: boolean; fx: Effect }[] };
+type ClipArg = { src: string; start: number; end: number; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; gap?: boolean; fx?: { bypass: boolean; fx: Effect }[];
+  fade_curve?: string; xfade_ms?: number; xfade_curve?: string };
 type FxArg = { bypass: boolean; fx: Effect };
 export type LatencyProfile = "LowLatency" | "Balanced" | "Safe";
 export interface DeviceInfo { id: string; host: string; raw_name: string; friendly_name: string; is_input: boolean; is_default: boolean; channels: number; sample_rate: number; }

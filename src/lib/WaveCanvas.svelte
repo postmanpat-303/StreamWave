@@ -1,17 +1,49 @@
 <script lang="ts">
   import { renderSpec, freqTicks, type Spec } from "./spectrogram";
-  import type { SpecColors, SpecScale } from "./editModel";
+  import { curveGain, type FadeCurve, type SpecColors, type SpecScale, type XfadeCurve } from "./editModel";
   type Phase = "down" | "move";
   /** An audio clip drawn on this lane (gaps are not listed). `fx` = active Layering Effects. */
-  type LaneClip = { a: number; b: number; index: number; name: string; fx: number };
+  type LaneClip = { a: number; b: number; index: number; name: string; fx: number;
+    /** own fades (s) and their shape */ fi?: number; fo?: number; fcurve?: FadeCurve;
+    /** crossfade with the previous clip: possible here?, heard length (ms), curve */ canX?: boolean; xf?: number; xcurve?: XfadeCurve; /** crossfade at its end (ms; replaces its fade-out) */ xo?: number };
   let { peaks, duration, selection = null, progress = 0, color = "#2ec4b6", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic",
-        clips = [], movingIndex = null, onselect, onpickclip, oncontext, ongrab, onlayers }:
+        clips = [], movingIndex = null, onselect, onpickclip, oncontext, ongrab, onlayers, onfade, onxfade, onxfademenu }:
     { peaks: number[]; duration: number; selection?: { a: number; b: number } | null; progress?: number; color?: string; active?: boolean; markers?: { id: number; time: number; label: string }[];
       bounds?: { t: number; split: boolean }[]; spec?: Spec | null; specScale?: SpecScale; specColors?: SpecColors;
       clips?: LaneClip[]; movingIndex?: number | null;
       onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onpickclip?: (t: number) => void; oncontext?: (t: number, e: MouseEvent) => void;
       /** pointer down on a clip's title bar: start moving it */ ongrab?: (index: number, e: PointerEvent, grabAt: number) => void;
-      /** the clip's Layering Effects button */ onlayers?: (index: number) => void } = $props();
+      /** the clip's Layering Effects button */ onlayers?: (index: number) => void;
+      /** fade handle released */ onfade?: (index: number, edge: "in" | "out", ms: number) => void;
+      /** crossfade handle dragged + released */ onxfade?: (index: number, ms: number) => void;
+      /** crossfade handle clicked (no drag): open its settings */ onxfademenu?: (index: number, e: MouseEvent) => void } = $props();
+  // ---- fade / crossfade handles (draft value while dragging; one commit on release) ----
+  type HDrag = { index: number; kind: "in" | "out" | "x"; x0: number; moved: boolean; val: number };
+  let hdrag = $state<HDrag | null>(null);
+  const draft = (index: number, kind: HDrag["kind"]) => (hdrag && hdrag.index === index && hdrag.kind === kind && hdrag.moved ? hdrag.val : null);
+  function hDown(e: PointerEvent, c: LaneClip, kind: HDrag["kind"]) {
+    if (e.button !== 0) return; e.preventDefault(); e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    hdrag = { index: c.index, kind, x0: e.clientX, moved: false, val: kind === "in" ? c.fi ?? 0 : kind === "out" ? c.fo ?? 0 : (c.xf ?? 0) / 1000 };
+  }
+  function hMove(e: PointerEvent, c: LaneClip) {
+    if (!hdrag) return; if (Math.abs(e.clientX - hdrag.x0) > 3) hdrag.moved = true; if (!hdrag.moved) return;
+    const t = timeAt(e), len = c.b - c.a;
+    if (hdrag.kind === "in") hdrag.val = Math.max(0, Math.min(len - (c.fo ?? 0), t - c.a));
+    else if (hdrag.kind === "out") hdrag.val = Math.max(0, Math.min(len - (c.fi ?? 0), c.b - t));
+    else hdrag.val = Math.max(0, 2 * Math.abs(t - c.a)); // the crossfade's edge follows the pointer
+  }
+  function hUp(e: PointerEvent, c: LaneClip) {
+    const d = hdrag; hdrag = null; if (!d) return; e.stopPropagation();
+    if (!d.moved) { if (d.kind === "x") onxfademenu?.(c.index, e); return; }
+    if (d.kind === "x") onxfade?.(c.index, Math.round(d.val * 1000)); else onfade?.(c.index, d.kind, Math.round(d.val * 1000));
+  }
+  /** SVG path (viewBox 0..100) of a fade: shaded attenuation above the gain curve + the curve itself. */
+  function fadePath(curve: FadeCurve | XfadeCurve | undefined, out: boolean) {
+    const pts: string[] = [];
+    for (let k = 0; k <= 32; k++) { const x = k / 32, g = curveGain(curve, out ? 1 - x : x); pts.push(`${(x * 100).toFixed(2)},${(100 - g * 100).toFixed(2)}`); }
+    return { area: `M0,0 L${pts.join(" L")} L100,0 Z`, line: `M${pts.join(" L")}` };
+  }
   let canvas: HTMLCanvasElement;
   let w = $state(800), h = $state(90);
   let anchor = 0, dragging = false;
@@ -89,6 +121,28 @@
       <span class="cn">{c.name}</span>
       {#if onlayers}<button class="lfx" class:has={c.fx > 0} title="Layering Effects for this clip" aria-label="Layering Effects for clip {c.name}" onclick={(e) => { e.stopPropagation(); onlayers(c.index); }}>◧{c.fx ? ` ${c.fx}` : ""}</button>{/if}
     </div>
+    {@const fiv = (c.xf ?? 0) > 0 ? 0 : draft(c.index, "in") ?? c.fi ?? 0}
+    {@const fov = (c.xo ?? 0) > 0 ? 0 : draft(c.index, "out") ?? c.fo ?? 0}
+    {#if fiv > 0}{@const fp = fadePath(c.fcurve, false)}<svg class="fade" style="left:{pct(c.a)}%;width:{pct(fiv)}%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="area" d={fp.area} /><path class="line" d={fp.line} /></svg>{/if}
+    {#if fov > 0}{@const fp = fadePath(c.fcurve, true)}<svg class="fade" style="left:{pct(c.b - fov)}%;width:{pct(fov)}%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="area" d={fp.area} /><path class="line" d={fp.line} /></svg>{/if}
+    {#if onfade && !((c.xf ?? 0) > 0)}
+      <div class="fh in" class:set={fiv > 0} style="left:{pct(c.a + fiv)}%" role="slider" tabindex="-1" aria-label="Fade-in of {c.name}" aria-valuenow={Math.round(fiv * 1000)} aria-valuemin={0}
+        title="Fade-in {Math.round(fiv * 1000)} ms: drag" onpointerdown={(e) => hDown(e, c, "in")} onpointermove={(e) => hMove(e, c)} onpointerup={(e) => hUp(e, c)} onpointercancel={() => (hdrag = null)}></div>
+    {/if}
+    {#if onfade && !((c.xo ?? 0) > 0)}
+      <div class="fh out" class:set={fov > 0} style="left:{pct(c.b - fov)}%" role="slider" tabindex="-1" aria-label="Fade-out of {c.name}" aria-valuenow={Math.round(fov * 1000)} aria-valuemin={0}
+        title="Fade-out {Math.round(fov * 1000)} ms: drag" onpointerdown={(e) => hDown(e, c, "out")} onpointermove={(e) => hMove(e, c)} onpointerup={(e) => hUp(e, c)} onpointercancel={() => (hdrag = null)}></div>
+    {/if}
+    {#if c.canX && onxfade}
+      {@const xv = draft(c.index, "x") ?? (c.xf ?? 0) / 1000}
+      {#if xv > 0}{@const po = fadePath(c.xcurve ?? "equal_power", true)}{@const pi = fadePath(c.xcurve ?? "equal_power", false)}
+        <svg class="xf" style="left:{pct(c.a - xv / 2)}%;width:{pct(xv)}%" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><path class="o" d={po.line} /><path class="i" d={pi.line} /></svg>
+      {/if}
+      <button class="xh" class:set={xv > 0} style="left:{pct(c.a)}%" title={xv > 0 ? `Crossfade ${Math.round(xv * 1000)} ms (${c.xcurve === "linear" ? "linear" : "equal power"}): drag to change, click for options` : "Crossfade: drag outwards, or click for options"}
+        aria-label="Crossfade into {c.name}" onpointerdown={(e) => hDown(e, c, "x")} onpointermove={(e) => hMove(e, c)} onpointerup={(e) => hUp(e, c)} onpointercancel={() => (hdrag = null)}>
+        <svg viewBox="0 0 16 10" width="16" height="10" aria-hidden="true"><path d="M1 9 L15 1 M1 1 L15 9" /></svg>{#if hdrag?.kind === "x" && hdrag.index === c.index && hdrag.moved}<span>{Math.round(xv * 1000)} ms</span>{/if}
+      </button>
+    {/if}
     {#if movingIndex === c.index}<div class="clipdim" style="left:{pct(c.a)}%;width:{pct(c.b - c.a)}%"></div>{/if}
   {/each}
   {#if selection}
@@ -115,5 +169,16 @@
   .lfx { flex: none; font-size: 10px; line-height: 12px; padding: 0 4px; border-radius: 3px; background: rgb(var(--bg-rgb) / 0.80); border: 1px solid #ffffff33; color: var(--text); cursor: pointer; }
   .lfx.has { color: var(--bg); background: var(--accent); border-color: var(--accent); font-weight: 700; }
   .clipdim { position: absolute; top: 0; bottom: 0; background: rgb(var(--bg-rgb) / 0.67); pointer-events: none; z-index: 1; }
+  .fade { position: absolute; top: 16px; bottom: 0; pointer-events: none; z-index: 1; overflow: visible; }
+  .fade .area { fill: #000000a0; } .fade .line, .xf path { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; } .fade .line { stroke: var(--accent); }
+  .fh { position: absolute; top: 16px; width: 9px; height: 9px; box-sizing: border-box; background: var(--panel3); border: 1px solid var(--accent); border-radius: 2px; cursor: ew-resize; z-index: 3; opacity: .45; touch-action: none; }
+  .fh.in { border-top-left-radius: 0; } .fh.out { margin-left: -9px; border-top-right-radius: 0; }
+  .fh.set { background: var(--accent); opacity: .9; } .wrap:hover .fh { opacity: 1; }
+  .xf { position: absolute; top: 16px; bottom: 0; pointer-events: none; z-index: 1; background: rgb(var(--accent-rgb) / .10); border-left: 1px dashed rgb(var(--accent-rgb) / .5); border-right: 1px dashed rgb(var(--accent-rgb) / .5); box-sizing: border-box; }
+  .xf .o { stroke: var(--blue-hi); } .xf .i { stroke: var(--accent); }
+  .xh { position: absolute; bottom: 3px; transform: translateX(-50%); z-index: 4; display: flex; align-items: center; gap: 4px; padding: 1px 4px; border-radius: 4px; font-size: 9.5px; font-weight: 700;
+    background: rgb(var(--bg-rgb) / .85); border: 1px solid #ffffff40; color: var(--text); cursor: ew-resize; box-shadow: 0 1px 3px #000a; touch-action: none; opacity: .6; }
+  .xh svg path { stroke: currentColor; stroke-width: 1.6; fill: none; } .wrap:hover .xh, .xh.set { opacity: 1; }
+  .xh.set { border-color: var(--accent); color: var(--accent); }
   .tick { position: absolute; left: 2px; transform: translateY(-50%); font-size: 9px; color: #fff; background: #0008; padding: 0 3px; border-radius: 3px; pointer-events: none; }
 </style>

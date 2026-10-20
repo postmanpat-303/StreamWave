@@ -71,3 +71,44 @@ How tracks, clips, samples, markers, projects and effects fit together (state as
 - `.twt` files that use gaps or clip effects are written as format version 2, so older StreamWave versions
   refuse them with "made by a newer StreamWave" instead of failing on an empty source path. Projects without
   them are still written as version 1.
+
+## Restyle branch additions (crossfades, effect levels, workspaces)
+
+### Where each effect applies
+| Level | Edited in | Runs | Notes |
+|---|---|---|---|
+| **Clip layers** (Layering Effects) | ◧ panel on a clip, or the clip group in the Effects Layer workspace | First, on that clip only, top layer first | Part of `render()`; changing them re-renders the dry audio (`Ctl::Dry` swap, no restart) |
+| **Clip gain / fades / crossfades** | Selection panel, lane fade handles, crossfade handle | After the clip's layers | Part of `render()` |
+| **Track effects** | Effects rack, or the track group in the Effects Layer workspace | On the whole track after the clips are joined | Streamed by the playback `Chain`; parameter changes go in live (`Ctl::Fx`) |
+| **Mix** | – | Tracks summed | No master/output effect bus |
+
+The Effects Layer workspace and the Settings rack are two views of the same data: both call the same
+`changeFx` / `setClipFx` paths, so switching views neither re-applies nor duplicates processing, and playback keeps
+running. While a knob on a *track* effect is dragged, the draft chain is pushed to the running playback
+(`update_fx`, no history entry); one undo step is recorded on release. Clip-layer knobs apply on release (each
+change re-renders the clip).
+
+### Fades and crossfades
+- A clip's own fades use `fade_curve` (`s_curve` default = the raised cosine every older version used, `linear`,
+  `equal_power`). The lane shows them and has a drag handle at each top corner.
+- A crossfade is stored on the **incoming** clip: `xfade_ms`, `xfade_curve` (`equal_power` default, `linear`) and
+  `xfade_from` (source + end of the clip it fades from). It is centred on the cut: the outgoing clip plays on into
+  its source beyond its end and the incoming clip starts early from before its start ("handles"), and the two are
+  summed with complementary gains (linear sums to exactly 1, equal power to power 1). Timeline positions do not move.
+- Where a source has no spare audio at the cut (two whole files back to back), `setCrossfade` trims the clips by the
+  missing amount so they truly overlap; later audio moves earlier by that amount and the UI says so.
+- `render()` clamps every crossfade to the handles that really exist and to half of either clip, so no edit can make
+  it read past a file or produce a dip; an edge with a crossfade ignores that clip's own fade on that edge.
+- Any edit that changes the neighbour a crossfade fades from (cut, paste, move, trimming its end) drops the
+  crossfade (`merge()` checks `xfade_from`); split/join keep it on the clip's head.
+- Playback, export, mix and every other render use the same `render()`, so crossfades sound identical everywhere
+  (tested in `crossfades_play_like_they_export`).
+- Projects using crossfades or non-default fade shapes are saved as format **v3**; StreamWave 0.10 refuses v3 with
+  "made by a newer StreamWave" instead of mis-reading it. Everything else still saves as v1/v2.
+
+### Limits
+- Crossfades are between **neighbouring** clips on one track (no free stacking of three or more clips).
+- No master/output effect bus.
+- Bars/beats ruler: not available (projects have no tempo); the ruler shows m:ss / h:mm:ss.
+- Normalize/Loudness clip layers on a crossfaded clip measure the clip *including* its handles.
+- Playing only a selection that starts inside a crossfade plays the incoming clip without the fade-in part.

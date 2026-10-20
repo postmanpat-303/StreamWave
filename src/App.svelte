@@ -8,6 +8,7 @@
   import Dropdown from "./lib/ui/Dropdown.svelte";
   import Ruler from "./lib/ui/Ruler.svelte";
   import Preview from "./lib/ui/Preview.svelte";
+  import Knob from "./lib/ui/Knob.svelte";
   import EffectsWorkspace from "./lib/EffectsWorkspace.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
@@ -199,7 +200,29 @@
   const clipName = (c: E.Clip) => sources.get(c.src)?.name ?? c.src.split(/[\\/]/).pop() ?? "clip";
   /** Render rate of a track (its first audio clip's source); null for an empty track. */
   function trackRate(t: E.EditTrack): number | null { const c = t.clips.find((x) => !x.gap); return c ? sources.get(c.src)?.sampleRate ?? null : null; }
-  const laneClips = (t: E.EditTrack) => E.audioClips(t).map((q) => ({ a: q.a, b: q.b, index: q.index, name: clipName(q.clip), fx: (q.clip.fx ?? []).filter((f) => !f.bypass).length }));
+  const srcDur = (src: string) => sources.get(src)?.duration;
+  const laneClips = (t: E.EditTrack) => E.audioClips(t).map((q) => ({ a: q.a, b: q.b, index: q.index, name: clipName(q.clip), fx: (q.clip.fx ?? []).filter((f) => !f.bypass).length,
+    fi: (q.clip.fade_in_ms ?? 0) / 1000, fo: (q.clip.fade_out_ms ?? 0) / 1000, fcurve: q.clip.fade_curve,
+    canX: E.canCrossfade(t, q.index), xf: E.xfadeLen(t, q.index, srcDur), xcurve: q.clip.xfade_curve, xo: E.xfadeLen(t, q.index + 1, srcDur) }));
+  // ---- fades & crossfades from the lane handles (one undo step each; audio updates in place while playing) ----
+  function laneFade(t: E.EditTrack, index: number, edge: "in" | "out", ms: number) {
+    commit(edge === "in" ? `Fade-in ${ms} ms` : `Fade-out ${ms} ms`, E.setClipFade(hist.present, t.id, index, edge, ms)); liveDry();
+  }
+  let xfMenu = $state<{ trackId: number; index: number; x: number; y: number } | null>(null);
+  function laneXfade(trackId: number, index: number, ms: number, curve?: E.XfadeCurve) {
+    const t = hist.present.tracks.find((x) => x.id === trackId); if (!t) return;
+    const r = E.setCrossfade(hist.present, trackId, index, ms, curve ?? t.clips[index]?.xfade_curve ?? "equal_power", srcDur);
+    if (!r) { toast("A crossfade needs two neighbouring clips (no silence between them)", "warn"); return; }
+    commit(r.ms ? `Crossfade ${r.ms} ms` : "Remove crossfade", r.project);
+    if (r.trimmed > 0.0005) { toast(`No spare audio at that cut: the clips now overlap by ${r.ms} ms (later audio moved ${(r.trimmed * 1000).toFixed(0)} ms earlier)`); restartIfPlaying(); }
+    else liveDry();
+  }
+  const xfClip = $derived.by(() => {
+    if (!xfMenu) return null; const t = project.tracks.find((x) => x.id === xfMenu!.trackId); const c = t?.clips[xfMenu.index];
+    if (!t || !c || !E.canCrossfade(t, xfMenu.index)) return null;
+    const p = t.clips[xfMenu.index - 1], tail = Math.max(0, (srcDur(p.src) ?? p.end) - p.end);
+    return { t, c, ms: E.xfadeLen(t, xfMenu.index, srcDur), max: Math.round(Math.min(5000, 1000 * Math.min(E.clipLen(c), E.clipLen(p)))), handles: Math.round(2000 * Math.min(tail, c.start)) };
+  });
   function scrollEl(id: number) { return document.querySelector<HTMLElement>(`[data-tid="${id}"] .scroll`); }
   /** px per second on the shared timeline (all lanes use the same scale). */
   function pps(id: number) { const el = scrollEl(id); return el ? (el.clientWidth * zoom) / timelineLen : 1; }
@@ -1054,6 +1077,26 @@
     onclose={() => (fxDialog = null)} />
 {/if}
 {#if importAsk}<ImportArrangeDialog files={importAsk.files} playhead={importAsk.playhead} onimport={importArranged} oncancel={() => { importAsk = null; toast("Import cancelled"); }} />{/if}
+  {#if xfMenu && xfClip}
+    {@const xm = xfMenu}
+    <!-- closes on pointerdown (not click): the click that follows the handle's pointerup must not close it again -->
+    <div class="xfveil" role="presentation" onpointerdown={() => (xfMenu = null)} oncontextmenu={(e) => { e.preventDefault(); xfMenu = null; }}></div>
+    <div class="xfpop hw" role="dialog" aria-label="Crossfade" tabindex="-1" style="left:{Math.min(xm.x, innerWidth - 300)}px;top:{Math.min(xm.y + 12, innerHeight - 260)}px"
+      onkeydown={(e) => { if (e.key === "Escape") { e.stopPropagation(); xfMenu = null; } }}>
+      <h3>Crossfade</h3>
+      <div class="xfrow">
+        <Knob label="Length" unit="ms" min={0} max={xfClip.max} step={10} value={xfClip.ms} def={Math.min(300, xfClip.max)} size={64} scale="ends"
+          onchange={(v) => laneXfade(xm.trackId, xm.index, v)} />
+        <div class="xfside">
+          <Dropdown caption="Curve" value={xfClip.c.xfade_curve ?? "equal_power"} onchange={(e) => laneXfade(xm.trackId, xm.index, xfClip.ms || Math.min(300, xfClip.max), e.currentTarget.value as E.XfadeCurve)}>
+            <option value="equal_power">Equal power (different material)</option><option value="linear">Linear (same material / room tone)</option>
+          </Dropdown>
+          <div class="small">{xfClip.handles >= (xfClip.ms || 1) ? "Uses spare audio around the cut: nothing moves." : `Spare audio for ${xfClip.handles} ms; longer crossfades overlap the clips and move later audio earlier.`}</div>
+          <button class="pill small" disabled={!xfClip.ms} onclick={() => { laneXfade(xm.trackId, xm.index, 0); xfMenu = null; }}>Remove crossfade</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 {#if layerClip}
   <LayerFxPanel clip={layerClip.q.clip} clipName={clipName(layerClip.q.clip)} trackName={layerClip.t.name} at={layerClip.q.a} onchange={changeLayers} onclose={() => (layerFor = null)} />
 {/if}
@@ -1224,6 +1267,8 @@
               onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)} onpickclip={(at) => pickClip(t, at)} oncontext={(at, e) => openAudioMenu(t, at, e)}
               clips={laneClips(t)} movingIndex={clipDrag?.moved && clipDrag.fromId === t.id ? clipDrag.index : null}
               ongrab={(i, e, at) => grabClip(t, i, e, at)} onlayers={(i) => openLayers(t, i)}
+              onfade={(i, edge, ms) => laneFade(t, i, edge, ms)} onxfade={(i, ms) => laneXfade(t.id, i, ms)}
+              onxfademenu={(i, e) => { xfMenu = { trackId: t.id, index: i, x: e.clientX, y: e.clientY }; tick().then(() => document.querySelector<HTMLElement>(".xfpop [role=slider]")?.focus()); }}
               color={t.kind === "obs" ? "#9b74ff" : t.kind === "recovered" ? "#ffd04a" : "#2ec4b6"} />
             {/if}
             </div></div></div>
@@ -1354,6 +1399,9 @@
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; overflow: hidden; }
   .left { display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
   aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; } aside.hidden { display: none; }
+  .xfveil { position: fixed; inset: 0; z-index: 90; }
+  .xfpop { position: fixed; z-index: 91; width: 290px; padding: 12px 14px; box-shadow: var(--hw-shadow), 0 12px 32px #000c; outline: none; }
+  .xfpop h3 { margin: 0 0 8px; font-size: 12px; } .xfrow { display: flex; gap: 12px; align-items: flex-start; } .xfside { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
   main.fxws { grid-template-columns: minmax(0, 1fr) minmax(420px, 46%); }
   .fxaside { overflow: hidden; }
   .wsw { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--inset-bg); box-shadow: var(--inset-shadow); }
