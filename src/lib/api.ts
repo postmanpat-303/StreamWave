@@ -1,7 +1,7 @@
 import type { Aup3Result } from "./aup3Import";
 import { invoke } from "@tauri-apps/api/core";
 import type { Effect } from "./fx";
-type ClipArg = { src: string; start: number; end: number; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number };
+type ClipArg = { src: string; start: number; end: number; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; gap?: boolean; fx?: { bypass: boolean; fx: Effect }[] };
 type FxArg = { bypass: boolean; fx: Effect };
 export type LatencyProfile = "LowLatency" | "Balanced" | "Safe";
 export interface DeviceInfo { id: string; host: string; raw_name: string; friendly_name: string; is_input: boolean; is_default: boolean; channels: number; sample_rate: number; }
@@ -33,6 +33,9 @@ export const api = {
   play: (path: string, start = 0) => invoke("play_file", { path, start }),
   playClips: (clips: ClipArg[], fx: FxArg[], start = 0) => invoke("play_clips", { clips, fx, start }),
   playMix: (tracks: { clips: ClipArg[]; fx: FxArg[]; gain?: number }[], start = 0) => invoke("play_mix", { tracks, start }),
+  /** Swap re-rendered clips into the running playback (clip effects changed). false = restart instead. */
+  updatePlayClips: (clips: ClipArg[]) => invoke<boolean>("update_play_clips", { clips }),
+  updatePlayMix: (tracks: { clips: ClipArg[]; fx: FxArg[]; gain?: number }[]) => invoke<boolean>("update_play_mix", { tracks }),
   exportClips: (clips: ClipArg[], fx: FxArg[], path: string) => invoke<string>("export_clips", { clips, fx, path }),
   setPreroll: (secs: number, prepend: boolean) => invoke("set_preroll", { secs, prepend }),
   setSafety: (on: boolean) => invoke("set_safety", { on }),

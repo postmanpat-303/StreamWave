@@ -2,7 +2,7 @@
 # Prebuilt StreamWave, repackaged from the .deb on the GitHub release (built on Ubuntu 22.04, glibc 2.35).
 # Build:  makepkg -si      (Arch / CachyOS / Manjaro / EndeavourOS)
 pkgname=streamwave-bin
-pkgver=0.9.0
+pkgver=0.10.0
 pkgrel=1
 pkgdesc="Audio recorder & editor for streamers and podcasters: OBS sync, one-click Studio Sound, live effects"
 arch=('x86_64')

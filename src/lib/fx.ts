@@ -95,3 +95,12 @@ export function applyPreset(current: FxSlot[], idx: number): FxSlot[] {
   return PRESETS[idx].build().map((fx) => slot(fx.type === "NoiseReduction" && old?.profile.length ? { ...fx, profile: old.profile } : fx));
 }
 export const activeChain = (fx: FxSlot[] | undefined) => (fx ?? []).map(({ bypass, fx }) => ({ bypass, fx }));
+
+/** Reorder a layer stack: move item `from` to index `to` (Layering Effects drag / keyboard). Same array if nothing moves. */
+export function moveLayer(fx: FxSlot[], from: number, to: number): FxSlot[] {
+  if (from < 0 || from >= fx.length) return fx;
+  to = Math.max(0, Math.min(fx.length - 1, to)); if (to === from) return fx;
+  const c = [...fx]; const [m] = c.splice(from, 1); c.splice(to, 0, m); return c;
+}
+/** Effects offered as clip layers. Noise reduction needs a learned profile from a track selection, so it stays a track effect. */
+export const LAYER_TYPES = (Object.keys(FX_NAMES) as EffectType[]).filter((t) => t !== "NoiseReduction");

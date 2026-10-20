@@ -1,21 +1,23 @@
 // .twt project format (JSON). Stores the edit model + effect chains (incl. learned noise
 // profiles) and references to source files. Peaks are recomputed on open.
-import type { Project, Source, EditTrack, Marker } from "./editModel";
+import { usesClipFeatures, type Project, type Source, type EditTrack, type Marker } from "./editModel";
 
 export const FORMAT = "streamwave-project";
 /** Projects saved before the rename to StreamWave. */
 export const LEGACY_FORMATS = ["truewave-project"];
-export const VERSION = 1;
+/** Newest format this build reads. v2 (0.10.0) = gap clips and per-clip effect stacks. */
+export const VERSION = 2;
 export interface SourceRef { path: string; name: string; duration: number; sampleRate: number; channels: number; }
 export interface ProjectFile { format: string; version: number; savedAt: string; app: string; nextId: number; tracks: EditTrack[]; markers: Marker[]; sources: SourceRef[]; }
 
 export function serialize(p: Project, sources: Map<string, Source>, nextId: number): string {
-  const used = new Set(p.tracks.flatMap((t) => t.clips.map((c) => c.src)));
+  const used = new Set(p.tracks.flatMap((t) => t.clips.filter((c) => !c.gap).map((c) => c.src)));
   const refs: SourceRef[] = [...used].map((path) => {
     const s = sources.get(path);
     return { path, name: s?.name ?? path.split(/[\\/]/).pop()!, duration: s?.duration ?? 0, sampleRate: s?.sampleRate ?? 0, channels: s?.channels ?? 0 };
   });
-  const f: ProjectFile = { format: FORMAT, version: VERSION, savedAt: new Date().toISOString(), app: "StreamWave", nextId, tracks: p.tracks, markers: p.markers ?? [], sources: refs };
+    // only projects that need the new clip data are marked v2, so simple projects still open in older versions
+  const f: ProjectFile = { format: FORMAT, version: usesClipFeatures(p) ? 2 : 1, savedAt: new Date().toISOString(), app: "StreamWave", nextId, tracks: p.tracks, markers: p.markers ?? [], sources: refs };
   return JSON.stringify(f);
 }
 
@@ -26,7 +28,10 @@ export function deserialize(json: string): ProjectFile {
   if (!Array.isArray(f.tracks)) throw new Error("Project has no tracks list");
   for (const t of f.tracks) {
     if (typeof t.id !== "number" || !Array.isArray(t.clips)) throw new Error("Damaged track in project");
-    for (const c of t.clips) if (typeof c.src !== "string" || !(c.end >= c.start)) throw new Error("Damaged clip in project");
+    for (const c of t.clips) {
+      if (typeof c.src !== "string" || !(c.end >= c.start) || (!c.gap && !c.src)) throw new Error("Damaged clip in project");
+      if (c.fx !== undefined && !Array.isArray(c.fx)) throw new Error("Damaged clip effects in project");
+    }
     t.fx ??= [];
   }
   f.sources ??= [];

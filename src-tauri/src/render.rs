@@ -5,14 +5,19 @@ use serde::Deserialize;
 use std::path::Path;
 use std::sync::Arc;
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Deserialize, Clone, Debug, Default)]
 pub struct ClipSpec {
+    /// Source file (empty for a gap).
     pub src: String, pub start: f64, pub end: f64,
     /// Per-clip gain in dB (applied while rendering; original files untouched).
     #[serde(default)] pub gain_db: Option<f64>,
     /// Raised-cosine fade lengths in milliseconds.
     #[serde(default)] pub fade_in_ms: Option<f64>,
     #[serde(default)] pub fade_out_ms: Option<f64>,
+    /// Silence of `end - start` seconds (positions clips on the timeline; no source).
+    #[serde(default)] pub gap: bool,
+    /// The clip's own effect stack ("Layering Effects"), run before clip gain/fades.
+    #[serde(default)] pub fx: Vec<crate::fx::Slot>,
 }
 
 /// Decoded sources, most-recently-used first. Bounded so long sessions with many big files
@@ -38,43 +43,66 @@ impl DecodeCache {
     }
 }
 
-/// Mix-free concatenation: output rate/channels follow the first clip's source.
+/// Mix-free concatenation: output rate/channels follow the first audio (non-gap) clip's source.
+///
+/// Per clip: read the source (linear interpolation for other rates) -> the clip's effect stack (same
+/// `fx::Chain` as track effects) -> clip gain and fades. Gaps are zeros. Clip *i* covers output frames
+/// `round(tl*rate) .. round((tl+len)*rate)` of the running timeline position `tl`, and every clip fills its
+/// frames exactly (zero-padded at a source's end), so positions are sample-exact however clips are arranged.
 pub fn render(cache: &DecodeCache, clips: &[ClipSpec]) -> anyhow::Result<Decoded> {
     anyhow::ensure!(!clips.is_empty(), "nothing to render");
-    let first = cache.get(&clips[0].src)?;
-    let (rate, ch) = (first.sample_rate, first.channels);
+    let (rate, ch) = match clips.iter().find(|c| !c.gap) {
+        Some(c) => { let d = cache.get(&c.src)?; (d.sample_rate, d.channels.max(1)) }
+        None => (48000, 2), // only silence (e.g. a selection inside a gap)
+    };
     let mut out = Vec::new();
     // clip lengths are taken from the running timeline position, so splitting a clip anywhere
     // renders exactly the same samples as the unsplit clip (no dropped/doubled sample at the cut)
     let mut tl = 0.0f64;
+    let mut seg: Vec<f32> = Vec::new();
     for c in clips {
-        let d = cache.get(&c.src)?;
-        let frames = d.samples.len() / d.channels;
-        let ratio = d.sample_rate as f64 / rate as f64;
         let len = (c.end - c.start).max(0.0);
         let g0 = (tl * rate as f64).round();
         let n = ((tl + len) * rate as f64).round() as usize - g0 as usize;
+        if c.gap { tl += len; out.resize(out.len() + n * ch, 0.0); continue }
+        let d = cache.get(&c.src)?;
+        let frames = d.samples.len() / d.channels;
+        let ratio = d.sample_rate as f64 / rate as f64;
         // output frame g reads source position start + (g - tl*rate) * ratio, same as without the cut
         let s0 = c.start * d.sample_rate as f64 + (g0 - tl * rate as f64) * ratio;
         tl += len;
-        // per-clip gain + raised-cosine fades
-        let gain = c.gain_db.map(|db| 10f64.powf(db / 20.0) as f32).unwrap_or(1.0);
-        let fi = c.fade_in_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
-        let fo = c.fade_out_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
+        seg.clear();
         for f in 0..n {
             let pos = s0 + f as f64 * ratio;
             let i = pos as usize;
-            if i >= frames { break }
+            if i >= frames || frames == 0 { break }
             let j = (i + 1).min(frames - 1); let t = (pos - i as f64) as f32;
-            let mut g = gain;
-            if let Some(fi) = fi { if fi > 0 && f < fi { g *= (0.5 * (1.0 - (std::f64::consts::PI * f as f64 / fi as f64).cos())) as f32 } }
-            if let Some(fo) = fo { if fo > 0 && f + fo >= n { let k = n - 1 - f; g *= (0.5 * (1.0 - (std::f64::consts::PI * k as f64 / fo as f64).cos())) as f32 } }
             for k in 0..ch {
                 let sc = k % d.channels;
                 let a = d.samples[i * d.channels + sc]; let b = d.samples[j * d.channels + sc];
-                out.push((a + (b - a) * t) * g);
+                seg.push(a + (b - a) * t);
             }
         }
+        seg.resize(n * ch, 0.0); // a clip always fills its slot exactly
+        // 1) the clip's own effects (Layering Effects): the same streaming chain as track effects
+        if c.fx.iter().any(|s| !s.bypass) {
+            let mut sd = Decoded { samples: std::mem::take(&mut seg), channels: ch, sample_rate: rate };
+            crate::fx::process_chain(&mut sd, &c.fx);
+            seg = sd.samples;
+        }
+        // 2) per-clip gain + raised-cosine fades
+        let gain = c.gain_db.map(|db| 10f64.powf(db / 20.0) as f32).unwrap_or(1.0);
+        let fi = c.fade_in_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
+        let fo = c.fade_out_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
+        if gain != 1.0 || fi.is_some_and(|x| x > 0) || fo.is_some_and(|x| x > 0) {
+            for (f, fr) in seg.chunks_mut(ch).enumerate() {
+                let mut g = gain;
+                if let Some(fi) = fi { if fi > 0 && f < fi { g *= (0.5 * (1.0 - (std::f64::consts::PI * f as f64 / fi as f64).cos())) as f32 } }
+                if let Some(fo) = fo { if fo > 0 && f + fo >= n { let k = n - 1 - f; g *= (0.5 * (1.0 - (std::f64::consts::PI * k as f64 / fo as f64).cos())) as f32 } }
+                fr.iter_mut().for_each(|v| *v *= g);
+            }
+        }
+        out.extend_from_slice(&seg);
     }
     Ok(Decoded { samples: out, channels: ch, sample_rate: rate })
 }
@@ -126,7 +154,7 @@ mod tests {
         let cache = DecodeCache::default();
         let p = src.to_string_lossy().to_string();
         // keep 0..0.2 and 0.5..0.6 => 300 samples
-        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.2, gain_db: None, fade_in_ms: None, fade_out_ms: None }, ClipSpec { src: p, start: 0.5, end: 0.6, gain_db: None, fade_in_ms: None, fade_out_ms: None }]).unwrap();
+        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.2, ..Default::default() }, ClipSpec { src: p, start: 0.5, end: 0.6, ..Default::default() }]).unwrap();
         assert_eq!(d.samples.len(), 300);
         assert!((d.samples[200] - 0.5).abs() < 1e-3);
         let out = dir.join("out.wav"); write_wav(&d, &out).unwrap();
@@ -142,7 +170,7 @@ mod tests {
         for i in 0..16000 { let x = (i as f32 * 0.37).sin(); w.write_sample(x).unwrap(); w.write_sample(-x).unwrap(); }
         w.finalize().unwrap();
         let p = src.to_string_lossy().to_string(); let cache = DecodeCache::default();
-        let c = |a: f64, b: f64| ClipSpec { src: p.clone(), start: a, end: b, gain_db: None, fade_in_ms: None, fade_out_ms: None };
+        let c = |a: f64, b: f64| ClipSpec { src: p.clone(), start: a, end: b, ..Default::default() };
         let whole = render(&cache, &[c(0.1, 1.9)]).unwrap();
         for cuts in [vec![0.33371], vec![0.2, 0.70001, 1.234567], vec![1.0 / 3.0, 2.0 / 3.0]] {
             let mut pts = vec![0.1]; pts.extend(cuts.iter().copied()); pts.push(1.9);
@@ -163,11 +191,132 @@ mod tests {
         let cache = DecodeCache::default();
         let p = src.to_string_lossy().to_string();
         // −6.02 dB ≈ half amplitude
-        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.5, gain_db: Some(-6.0206), fade_in_ms: None, fade_out_ms: None }]).unwrap();
+        let d = render(&cache, &[ClipSpec { src: p.clone(), start: 0.0, end: 0.5, gain_db: Some(-6.0206), ..Default::default() }]).unwrap();
         assert!((d.samples[400] - 0.5).abs() < 1e-3);
         // 500 ms fade-in over a 500 ms clip: starts at 0, ends at full scale
-        let d = render(&cache, &[ClipSpec { src: p, start: 0.0, end: 0.5, gain_db: None, fade_in_ms: Some(500.0), fade_out_ms: None }]).unwrap();
+        let d = render(&cache, &[ClipSpec { src: p, start: 0.0, end: 0.5, fade_in_ms: Some(500.0), ..Default::default() }]).unwrap();
         assert!(d.samples[0].abs() < 1e-6);
         assert!((d.samples[499] - 1.0).abs() < 1e-3);
+    }
+
+    fn wav(dir: &std::path::Path, name: &str, rate: u32, ch: u16, frames: usize, f: impl Fn(usize) -> f32) -> String {
+        let p = dir.join(name);
+        let spec = hound::WavSpec { channels: ch, sample_rate: rate, bits_per_sample: 32, sample_format: hound::SampleFormat::Float };
+        let mut w = hound::WavWriter::create(&p, spec).unwrap();
+        for i in 0..frames { for _ in 0..ch { w.write_sample(f(i)).unwrap(); } }
+        w.finalize().unwrap(); p.to_string_lossy().to_string()
+    }
+    fn tmp(name: &str) -> std::path::PathBuf { let d = std::env::temp_dir().join(format!("sw_{name}_{}", std::process::id())); let _ = std::fs::remove_dir_all(&d); std::fs::create_dir_all(&d).unwrap(); d }
+    fn gap(len: f64) -> ClipSpec { ClipSpec { gap: true, end: len, ..Default::default() } }
+    fn clip(src: &str, a: f64, b: f64) -> ClipSpec { ClipSpec { src: src.into(), start: a, end: b, ..Default::default() } }
+    fn slot(fx: crate::fx::Effect) -> crate::fx::Slot { crate::fx::Slot { bypass: false, fx } }
+
+    /// A moved clip (gap before it) starts on exactly the sample its timeline position says.
+    #[test] fn gaps_place_clips_on_exact_samples() {
+        let d = tmp("gap"); let cache = DecodeCache::default();
+        let src = wav(&d, "ones.wav", 48000, 2, 4800, |_| 1.0);
+        for k in [1usize, 12345, 48000, 480_007] {
+            let out = render(&cache, &[gap(k as f64 / 48000.0), clip(&src, 0.0, 0.1)]).unwrap();
+            assert_eq!(out.samples.len(), (k + 4800) * 2, "k={k}");
+            assert_eq!(out.samples[(k - 1) * 2], 0.0); assert_eq!(out.samples[k * 2], 1.0);
+        }
+        // positions built from many float pieces (as repeated moves produce) still land exactly
+        let pieces: Vec<ClipSpec> = (0..37).map(|i| gap((i * 131 + 7) as f64 / 48000.0)).collect();
+        let k: usize = (0..37).map(|i| i * 131 + 7).sum();
+        let mut cl = pieces; cl.push(clip(&src, 0.0, 0.05));
+        let out = render(&cache, &cl).unwrap();
+        assert_eq!(out.samples[(k - 1) * 2], 0.0); assert_eq!(out.samples[k * 2], 1.0); assert_eq!(out.samples.len(), (k + 2400) * 2);
+        // a selection that is only silence renders as silence
+        assert!(render(&cache, &[gap(0.5)]).unwrap().samples.iter().all(|v| *v == 0.0));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// Sequential multi-file import with mixed rates/channels: files butt together frame-exactly at the track rate.
+    #[test] fn sequential_files_with_mixed_rates_are_contiguous() {
+        let d = tmp("seq"); let cache = DecodeCache::default();
+        let a = wav(&d, "a44.wav", 44100, 1, 44100, |_| 0.25);       // 1 s mono 44.1k
+        let b = wav(&d, "b48.wav", 48000, 2, 24000, |_| 0.5);         // 0.5 s stereo 48k
+        let c = wav(&d, "c96.wav", 96000, 1, 9601, |_| -0.5);         // 9601 frames at 96k (non-integer at 44.1k)
+        let out = render(&cache, &[clip(&a, 0.0, 1.0), clip(&b, 0.0, 0.5), clip(&c, 0.0, 9601.0 / 96000.0)]).unwrap();
+        assert_eq!((out.sample_rate, out.channels), (44100, 1));
+        let n_c = ((1.5 + 9601.0 / 96000.0) * 44100.0f64).round() as usize - 66150;
+        assert_eq!(out.samples.len(), 44100 + 22050 + n_c);
+        assert_eq!(out.samples[44099], 0.25); assert_eq!(out.samples[44100], 0.5); // no gap, no overlap
+        assert_eq!(out.samples[66149], 0.5); assert_eq!(out.samples[66150], -0.5);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// Clip effects run in stack order on that clip only, before clip gain/fades, using the track-effect engine.
+    #[test] fn clip_effects_run_in_order_before_gain() {
+        use crate::fx::Effect;
+        let d = tmp("cfx"); let cache = DecodeCache::default();
+        let src = wav(&d, "s.wav", 48000, 1, 48000, |i| 0.5 * (i as f32 * 0.05).sin());
+        let lim = Effect::Limiter { ceiling_db: -12.0, release_ms: 50.0 };
+        let up = Effect::Gain { db: 12.0 };
+        let peak = |v: &[f32]| v.iter().fold(0f32, |m, x| m.max(x.abs()));
+        let mut a = clip(&src, 0.0, 1.0); a.fx = vec![slot(up.clone()), slot(lim.clone())]; // boost, then limit to -12 dBFS
+        let mut b = clip(&src, 0.0, 1.0); b.fx = vec![slot(lim.clone()), slot(up.clone())]; // limit, then boost
+        let (ra, rb) = (render(&cache, &[a.clone()]).unwrap(), render(&cache, &[b]).unwrap());
+        assert!(peak(&ra.samples) <= 0.2512 + 1e-4); assert!(peak(&rb.samples) > 0.9);
+        // exactly what the fx engine gives for the clip on its own
+        let mut manual = render(&cache, &[clip(&src, 0.0, 1.0)]).unwrap(); crate::fx::process_chain(&mut manual, &a.fx);
+        assert_eq!(ra.samples, manual.samples);
+        // then clip gain: -6.02 dB on top halves it
+        let mut g = a.clone(); g.gain_db = Some(-6.0206);
+        let rg = render(&cache, &[g]).unwrap();
+        assert!(rg.samples.iter().zip(&ra.samples).all(|(x, y)| (x - y * 0.5).abs() < 1e-4));
+        // bypassed layers do nothing; other clips on the track are untouched
+        let mut by = a.clone(); by.fx.iter_mut().for_each(|s| s.bypass = true);
+        assert_eq!(render(&cache, &[by]).unwrap().samples, render(&cache, &[clip(&src, 0.0, 1.0)]).unwrap().samples);
+        let two = render(&cache, &[a, clip(&src, 0.0, 1.0)]).unwrap();
+        assert_eq!(&two.samples[48000..], &render(&cache, &[clip(&src, 0.0, 1.0)]).unwrap().samples[..]);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// Export path (render -> track chain over the whole buffer) and the live playback path (render -> the
+    /// render-ahead Feeder in blocks) give identical samples for a project with moved clips, clip effects,
+    /// clip gain/fades and track effects. A live hand-over of the same dry audio mid-stream changes nothing.
+    #[test] fn export_and_playback_render_identically() {
+        use crate::fx::{Effect, EqBand};
+        use crate::audio::playback::Feeder;
+        let d = tmp("evp"); let cache = DecodeCache::default();
+        let src = wav(&d, "v.wav", 48000, 2, 96000, |i| 0.3 * (i as f32 * 0.031).sin() + 0.05 * ((i * 7919 % 1000) as f32 / 1000.0 - 0.5));
+        let b = |f| EqBand { freq: f, gain_db: 3.0, q: 1.0 };
+        let mut c1 = clip(&src, 0.25, 1.25);
+        c1.fx = vec![slot(Effect::Eq { hpf_hz: 100.0, hpf_on: true, low_shelf: b(150.0), peaks: [b(400.0), b(2000.0), b(5000.0)], high_shelf: b(9000.0) }),
+                     slot(Effect::Compressor { threshold_db: -20.0, ratio: 4.0, attack_ms: 5.0, release_ms: 80.0, makeup_db: 3.0 }),
+                     slot(Effect::Normalize { peak_db: -3.0 })];
+        c1.gain_db = Some(-2.0); c1.fade_in_ms = Some(30.0); c1.fade_out_ms = Some(120.0);
+        let mut c2 = clip(&src, 1.5, 2.0); c2.fx = vec![slot(Effect::Gate { threshold_db: -30.0, floor_db: -40.0, attack_ms: 1.0, hold_ms: 20.0, release_ms: 60.0 })];
+        let clips = vec![gap(0.123456), c1, gap(2.0 + 17.0 / 48000.0), c2];
+        let track_fx = vec![slot(Effect::DeEsser { freq_hz: 5500.0, threshold_db: -30.0, max_reduction_db: 6.0 }),
+                            slot(Effect::Loudness { target_lufs: -16.0, ceiling_db: Some(-1.0) }), slot(Effect::Limiter { ceiling_db: -1.0, release_ms: 50.0 })];
+        // export
+        let mut exported = render(&cache, &clips).unwrap(); crate::fx::process_chain(&mut exported, &track_fx);
+        // playback, as the render-ahead thread runs it
+        let dry = Arc::new(render(&cache, &clips).unwrap());
+        let gains = crate::fx::resolve_gains(&dry, &track_fx, None).unwrap();
+        let play = |swap_at: Option<usize>| {
+            let mut f = Feeder::new(dry.clone(), track_fx.clone(), gains.clone(), 0); let mut out = vec![]; let mut blocks = 0;
+            while f.next(&mut out) { blocks += 1; if Some(blocks) == swap_at { assert!(f.swap_dry(Arc::new(render(&cache, &clips).unwrap()))) } }
+            out
+        };
+        let played = play(None);
+        assert_eq!(played.len(), exported.samples.len());
+        assert!(played == exported.samples, "playback differs from export");
+        assert!(play(Some(97)) == exported.samples, "hand-over of identical dry audio changed the output");
+        // the moved clip's first sample is where the timeline says
+        let first = (0.123456f64 * 48000.0).round() as usize;
+        // (silence before it; its 30 ms fade-in starts from zero, so check the next few samples)
+        assert!(dry.samples[..first * 2].iter().all(|v| *v == 0.0));
+        assert!(dry.samples[first * 2..(first + 50) * 2].iter().any(|v| *v != 0.0));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// A re-render with a different format can't be swapped in (playback restarts instead).
+    #[test] fn feeder_refuses_format_change() {
+        use crate::audio::playback::Feeder;
+        let a = Arc::new(Decoded { samples: vec![0.1; 4800], channels: 2, sample_rate: 48000 });
+        let mut f = Feeder::new(a, vec![], vec![], 0); let mut o = vec![]; f.next(&mut o);
+        assert!(!f.swap_dry(Arc::new(Decoded { samples: vec![0.1; 4800], channels: 1, sample_rate: 48000 })));
+        assert!(f.swap_dry(Arc::new(Decoded { samples: vec![0.2; 9600], channels: 2, sample_rate: 48000 })));
+        assert_eq!(f.total, 4800);
+        o.clear(); f.next(&mut o); assert!(o.iter().all(|v| *v == 0.2)); // new audio from the current position on
     }
 }

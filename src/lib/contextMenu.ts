@@ -73,6 +73,7 @@ export const FX_MENU_ORDER: EffectType[] = ["Gain", "Eq", "Compressor", "Gate", 
 export interface AudioCtx {
   hasRange: boolean; hasClipboard: boolean; canJoin: boolean; canSplit: boolean; playing?: boolean;
   muted: boolean; solo: boolean; spectrogram: boolean; tracks: number; trackName: string;
+  /** right-clicked on an audio clip (not silence) */ onClip?: boolean;
 }
 /** Menu for the waveform / clip area of an audio track. Ids are run by the app. */
 export function audioMenu(c: AudioCtx): MenuItem[] {
@@ -86,6 +87,7 @@ export function audioMenu(c: AudioCtx): MenuItem[] {
     { id: "split", label: c.hasRange ? "Split at selection edges" : "Split at cursor", shortcut: MOD + "K", disabled: !c.canSplit },
     { id: "join", label: "Join clips", shortcut: MOD + "J", disabled: !c.canJoin },
     { id: "selectclip", label: "Select whole clip", shortcut: "Double-click" },
+    { id: "layerfx", label: "Layering Effects…", disabled: !c.onClip },
     sep,
     { id: "addlabel", label: c.hasRange ? "Add label for selection" : "Add label here", shortcut: MOD + "B" },
     { id: "marker", label: "Add marker here", shortcut: "M" },

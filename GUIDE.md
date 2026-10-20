@@ -48,6 +48,8 @@ Tracks are lists of **clips** that point into the source files using start/end o
 | Waveform / spectrogram | the 〰 / ▤ button on each track, or **Ctrl+Shift+G** (View menu) for the selected tracks. Log or linear frequency scale; Classic, Inferno or Greyscale colours. |
 | Cut / Copy / Paste | Ctrl+X / Ctrl+C / Ctrl+V (paste replaces the selection or inserts at the cursor) |
 | Delete selection | Del or Backspace |
+| Move a clip | drag its **title bar** (the strip with its name) along the track or onto another track; Alt = no snapping, Esc cancels |
+| Layering Effects | the **◧** button on a clip's title bar, or right-click the clip → **Layering Effects…** |
 | Select all (every track) | Ctrl+A |
 | Undo / Redo | Ctrl+Z / Ctrl+Y or Ctrl+Shift+Z (full command history, 500 steps) |
 | Play / Pause | Space (plays the selection if there is one, otherwise from the cursor) |
@@ -123,6 +125,31 @@ The **Transcript** panel transcribes the active track's first source file with a
 StreamWave can't install audio drivers itself, but virtual audio cables work today:
 - Install a virtual cable (VB-CABLE, VoiceMeeter, or the "Stereo Mix" that some sound cards already expose).
 - StreamWave detects virtual devices and says so in **Settings → Speakers / output**: pick the cable as the output, then choose the same cable as the **microphone** in OBS / Discord / Zoom. Everything StreamWave plays — including the **▶ Mix all** mixdown — comes out there.
+
+## Importing several files at once
+Pick two or more audio files in **File → Import** (Ctrl+I), or drop them on the window together, and StreamWave asks how to lay them out before anything changes:
+- **One after another on one track**: in the order listed (use ↑/↓ to change it), starting at **0:00** or at **the cursor**. Each clip starts exactly where the previous one ends, at the decoded length of its file. There are no gaps or overlaps, even with different formats and sample rates. The track is named after the first file ("… + N more").
+- **One track per file**: every file starts at the same time, each on its own track named after the file.
+
+**Cancel** (or Esc) leaves the project exactly as it was. One **Ctrl+Z** undoes the whole import. The files are referenced, never copied or changed. A single file imports as before, as one new track.
+
+## Moving clips
+Every clip has a thin **title bar** at the top of the waveform with its name. Drag it:
+- **Sideways** to move the clip in time, or **up/down** onto another track. You can drop past the end of the project; the timeline grows, and the project length is the end of the last clip.
+- While you drag: a ghost shows where the clip will land, the target track lights up, the original clip is dimmed, and a readout shows the exact start time and track.
+- **Snapping**: the clip's start or end snaps to markers, other clips' edges, the cursor and 0:00 when within a few pixels. Hold **Alt** to place it freely. **Esc** cancels.
+- **No overlaps**: you can't drop a clip where it would overlap audio on the target track. The ghost turns red ("overlaps audio") and nothing changes. Move or trim the other clip first. The space between clips is silence.
+- Only the clip's position changes. Its audio, trims, gain, fades and layers go with it. Positions are whole samples at the track's sample rate, so clips never drift. Undo, redo, save and reopen all keep the exact positions.
+
+## Layering Effects (effects on one clip)
+Click **◧** on a clip's title bar (the number shows how many layers are on), or right-click the clip → **Layering Effects…**. The panel shows that clip's effect stack as layers:
+- **Order = processing order**: the top layer runs first. The full chain is *clip audio → layers (top to bottom) → clip gain/fades → track effects → output*.
+- **Add** a layer with the menu and **+ Add layer**. The effects are the same ones as track effects (EQ, compressor, gate, de-esser, limiter, loudness, normalize, gain, fades, AI denoise). Noise reduction stays a track effect because it learns a noise profile.
+- **⏻** turns a layer on/off (bypass), **✕** removes it, and clicking a layer opens its settings below the list.
+- **Reorder** by dragging the **⋮⋮** grip, with the ↑/↓ buttons, or with the keyboard: ↑/↓ picks a layer, **Alt+↑/↓** (or Ctrl+↑/↓) moves it, Space toggles it, Del removes it.
+- **Each clip owns its layers.** Copy/paste gives the copy its own stack, and splitting a clip gives each piece its own copy. Changing one never changes another.
+- Changes are heard live while the track plays, and export renders through the same code. Each change is one undo step.
+- Projects using clip layers or free clip positions are saved as `.twt` version 2. Older StreamWave versions decline to open them rather than mis-reading them.
 
 ## Editing extras
 - **✂ Silences** (on a track): scans for pauses below the noise floor + 8 dB (min 250 ms, with 80 ms padding so word tails survive). Review the count, then **Trim N silences** cuts them in one undoable step.

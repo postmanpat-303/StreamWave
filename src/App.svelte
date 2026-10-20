@@ -23,6 +23,8 @@
   import FxPanel from "./lib/FxPanel.svelte";
   import ExportPanel from "./lib/ExportPanel.svelte";
   import StudioPanel from "./lib/StudioPanel.svelte";
+  import ImportArrangeDialog from "./lib/ImportArrangeDialog.svelte";
+  import LayerFxPanel from "./lib/LayerFxPanel.svelte";
   import { serialize, deserialize } from "./lib/project";
   import { activeChain, slot, type FxSlot } from "./lib/fx";
   import { api, fmtTime, type DeviceInfo, type EngineStatus, type Level, type Settings, type LatencyProfile, type MicReport, type ExportOptions, type Analysis, type ObsStatus } from "./lib/api";
@@ -113,13 +115,40 @@
   async function openDropped(paths: string[]) {
     const twt = paths.find(isProjectFile);
     if (twt) { await openProject(twt); return; }
-    let skipped = 0;
+    let skipped = 0; const media: string[] = [];
     for (const p of paths) {
       if (isAup3(p)) await importAudacity(p);
-      else if (isMedia(p)) await addTrack(p, "import");
+      else if (isMedia(p)) media.push(p);
       else skipped++;
     }
     if (skipped) toast(`${skipped} file${skipped > 1 ? "s" : ""} skipped (not audio, video or an Audacity project)`, "warn");
+    await importMedia(media);
+  }
+  // ---- multi-file import: 2+ files at once ask how to arrange them (nothing changes until confirmed) ----
+  let importAsk = $state<{ files: string[]; playhead: number } | null>(null);
+  async function importMedia(paths: string[]) {
+    if (!paths.length) return;
+    if (paths.length === 1) { await addTrack(paths[0], "import"); return; }
+    importAsk = { files: paths, playhead: level.playing ? playOffset + level.play_secs : selection?.a ?? 0 };
+  }
+  async function importArranged(order: string[], mode: E.ImportMode, start: number) {
+    importAsk = null;
+    const m = new Map(sources); const files: E.ImportFile[] = []; const failed: string[] = [];
+    toast(`Importing ${order.length} files…`);
+    for (const p of order) {
+      try {
+        const w = await api.importAudio(p);
+        m.set(w.path, { path: w.path, name: w.name, duration: w.duration_secs, sampleRate: w.sample_rate, channels: w.channels, peaks: w.peaks });
+        files.push({ path: w.path, name: w.name, duration: w.duration_secs, sampleRate: w.sample_rate });
+      } catch { failed.push(p.split(/[\\/]/).pop()!); }
+    }
+    if (failed.length) toast(`Couldn't import: ${failed.join(", ")}`, "err");
+    const r = E.arrangeImport(hist.present, files, mode, start, () => nextId++);
+    if (!r.trackIds.length) return;
+    sources = m;
+    commit(mode === "sequential" ? `Import ${files.length} files in sequence` : `Import ${files.length} files as tracks`, r.project);
+    selection = { trackId: r.trackIds[0], a: start, b: start };
+    toast(mode === "sequential" ? `Imported ${files.length} files one after another on one track` : `Imported ${files.length} files as ${files.length} tracks`);
   }
   let dropHover = $state(false);
   function toggleTrackFlag(id: number, k: "muted" | "solo") {
@@ -153,10 +182,84 @@
   }
   /** Double-click: select the clip under the pointer. */
   function pickClip(t: E.EditTrack, at: number) {
-    let pos = 0;
-    for (const c of t.clips) { const l = E.clipLen(c); if (at >= pos && at <= pos + l) { selection = { trackId: t.id, a: pos, b: pos + l }; return; } pos += l; }
+    const q = E.audioClipAt(t, at); if (q) selection = { trackId: t.id, a: q.a, b: q.b };
   }
-  const timelineLen = $derived(Math.max(0.001, ...project.tracks.map((t) => E.trackLen(t)), ...(project.markers ?? []).map((m) => m.time)));
+  /** Project duration = the latest content end (clips, labels, markers). */
+  const contentLen = $derived(Math.max(0.001, ...project.tracks.map((t) => E.trackLen(t)), ...(project.markers ?? []).map((m) => m.time)));
+  // ---- moving clips: drag a clip's title bar along the timeline or onto another audio track ----
+  type Drag = { fromId: number; index: number; len: number; grab: number; x0: number; y0: number; moved: boolean; room: number;
+    toId: number; at: number; ok: boolean; snapTo: number | null; noSnap: boolean; x: number; y: number; name: string };
+  let clipDrag = $state<Drag | null>(null);
+  // while a clip is dragged the timeline gets room for it after the current end (fixed for the drag, so the scale doesn't jump)
+  const timelineLen = $derived(clipDrag?.moved ? Math.max(contentLen, clipDrag.room) : contentLen);
+  const clipName = (c: E.Clip) => sources.get(c.src)?.name ?? c.src.split(/[\\/]/).pop() ?? "clip";
+  /** Render rate of a track (its first audio clip's source); null for an empty track. */
+  function trackRate(t: E.EditTrack): number | null { const c = t.clips.find((x) => !x.gap); return c ? sources.get(c.src)?.sampleRate ?? null : null; }
+  const laneClips = (t: E.EditTrack) => E.audioClips(t).map((q) => ({ a: q.a, b: q.b, index: q.index, name: clipName(q.clip), fx: (q.clip.fx ?? []).filter((f) => !f.bypass).length }));
+  function scrollEl(id: number) { return document.querySelector<HTMLElement>(`[data-tid="${id}"] .scroll`); }
+  /** px per second on the shared timeline (all lanes use the same scale). */
+  function pps(id: number) { const el = scrollEl(id); return el ? (el.clientWidth * zoom) / timelineLen : 1; }
+  function timeAtX(id: number, clientX: number) { const el = scrollEl(id); if (!el) return 0; const r = el.getBoundingClientRect(); return (clientX - r.left + el.scrollLeft) / pps(id); }
+  function grabClip(t: E.EditTrack, index: number, e: PointerEvent, grabAt: number) {
+    const q = E.placed(t)[index]; if (!q || q.clip.gap) return;
+    clipDrag = { fromId: t.id, index, len: q.b - q.a, grab: grabAt - q.a, x0: e.clientX, y0: e.clientY, moved: false, room: contentLen + (q.b - q.a),
+      toId: t.id, at: q.a, ok: true, snapTo: null, noSnap: false, x: e.clientX, y: e.clientY, name: clipName(q.clip) };
+    window.addEventListener("pointermove", dragMove); window.addEventListener("pointerup", dragUp); window.addEventListener("keydown", dragKey, true);
+  }
+  function endDrag() { clipDrag = null; window.removeEventListener("pointermove", dragMove); window.removeEventListener("pointerup", dragUp); window.removeEventListener("keydown", dragKey, true); }
+  function dragKey(e: KeyboardEvent) { if (e.key === "Escape" && clipDrag) { e.preventDefault(); e.stopPropagation(); endDrag(); toast("Move cancelled"); } }
+  function dragTarget(d: Drag, e: PointerEvent): Drag {
+    let toId = d.toId;
+    for (const el of document.querySelectorAll<HTMLElement>("[data-tid]")) {
+      const r = el.getBoundingClientRect();
+      if (e.clientY >= r.top && e.clientY <= r.bottom) { const t = project.tracks.find((x) => x.id === +el.dataset.tid!); if (t && !E.isLabelTrack(t)) toId = t.id; break; }
+    }
+    const from = project.tracks.find((x) => x.id === d.fromId)!, to = project.tracks.find((x) => x.id === toId)!;
+    const rate = trackRate(to) ?? sources.get(from.clips[d.index].src)?.sampleRate ?? 48000;
+    let at = Math.max(0, timeAtX(toId, e.clientX) - d.grab), snapTo: number | null = null;
+    if (!e.altKey) {
+      const pts = [0, ...(project.markers ?? []).map((m) => m.time), ...(selection ? [selection.a] : []),
+        ...project.tracks.filter((x) => !E.isLabelTrack(x)).flatMap((x) => E.audioClips(x).filter((q) => !(x.id === d.fromId && q.index === d.index)).flatMap((q) => [q.a, q.b]))];
+      const s = E.snapClip(at, d.len, pts, 8 / pps(toId)); at = s.t; snapTo = s.to;
+    }
+    at = E.snapToSamples(at, rate);
+    const ok = E.moveClip(project, d.fromId, d.index, toId, at, rate).ok;
+    return { ...d, toId, at, ok, snapTo, noSnap: e.altKey, x: e.clientX, y: e.clientY };
+  }
+  function dragMove(e: PointerEvent) {
+    const d = clipDrag; if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.x0, e.clientY - d.y0) < 4) return;
+    clipDrag = dragTarget({ ...d, moved: true }, e);
+  }
+  function dragUp(e: PointerEvent) {
+    const d0 = clipDrag; if (!d0) return;
+    if (!d0.moved) { endDrag(); const t = project.tracks.find((x) => x.id === d0.fromId); const q = t && E.placed(t)[d0.index]; if (t && q) selection = { trackId: t.id, a: q.a, b: q.b }; return; }
+    const d = dragTarget(d0, e); endDrag();
+    const from = project.tracks.find((x) => x.id === d.fromId)!, to = project.tracks.find((x) => x.id === d.toId)!;
+    const q = E.placed(from)[d.index];
+    if (d.fromId === d.toId && q && Math.abs(q.a - d.at) < 1e-9) return; // dropped where it was
+    const rate = trackRate(to) ?? sources.get(from.clips[d.index].src)?.sampleRate ?? 48000;
+    const r = E.moveClip(hist.present, d.fromId, d.index, d.toId, d.at, rate);
+    if (!r.ok) { toast(r.reason === "overlap" ? `Can't drop there: it would overlap audio on "${to.name}". Drop into silence or after the end.` : "Clips can only go onto audio tracks", "warn"); return; }
+    commit(d.fromId === d.toId ? "Move clip" : `Move clip to ${to.name}`, r.project);
+    selection = { trackId: r.trackId, a: r.at, b: r.at + d.len };
+    if (layerFor) layerFor = null; // clip indices changed
+    restartIfPlaying();
+  }
+  const fmtPrecise = (t: number) => { const m = Math.floor(t / 60); return `${m}:${(t % 60).toFixed(3).padStart(6, "0")}`; };
+
+  // ---- Layering Effects (per-clip effect stack) ----
+  let layerFor = $state<{ trackId: number; index: number } | null>(null);
+  const layerClip = $derived.by(() => {
+    if (!layerFor) return null;
+    const t = project.tracks.find((x) => x.id === layerFor!.trackId); const q = t && E.placed(t)[layerFor.index];
+    return t && q && !q.clip.gap ? { t, q } : null;
+  });
+  function openLayers(t: E.EditTrack, index: number) { const q = E.placed(t)[index]; if (!q || q.clip.gap) return; layerFor = { trackId: t.id, index }; selection = { trackId: t.id, a: q.a, b: q.b }; }
+  function changeLayers(fx: FxSlot[], label: string) {
+    if (!layerFor) return;
+    commit(label, E.setClipFx(hist.present, layerFor.trackId, layerFor.index, fx)); liveDry();
+  }
   function syncScroll(e: Event) {
     const x = (e.currentTarget as HTMLElement).scrollLeft;
     for (const el of document.querySelectorAll<HTMLElement>(".tracks .scroll")) if (el !== e.currentTarget && el.scrollLeft !== x) el.scrollLeft = x;
@@ -252,7 +355,7 @@
     const canSplit = next.tracks.some((x, i) => x !== hist.present.tracks[i]);
     const canJoin = hasRange() && project.tracks.some((x) => ids.includes(x.id) && E.clipBounds(x).some((b) => b.split && b.t > sel.a + 1e-9 && b.t < sel.b - 1e-9));
     const items = audioMenu({ hasRange: hasRange(), hasClipboard: clipboard.length > 0, canJoin, canSplit, muted: !!t.muted, solo: !!t.solo,
-      spectrogram: t.view === "spectrogram", tracks: ids.length, trackName: t.name });
+      spectrogram: t.view === "spectrogram", tracks: ids.length, trackName: t.name, onClip: !!E.audioClipAt(t, at) });
     ctxMenu = { items, x: e.clientX, y: e.clientY, run: (id) => audioAction(t, at, id) };
   }
   function openTrackHeaderMenu(t: E.EditTrack, e: MouseEvent) {
@@ -284,6 +387,7 @@
     switch (id) {
       case "marker": addMarker(undefined, sel?.a ?? at); break;
       case "selectclip": pickClip(t, at); break;
+      case "layerfx": { const q = E.audioClipAt(t, at); if (q) openLayers(t, q.index); break; }
       case "trim": if (sel && hasRange()) { commit("Trim to selection", E.trimMany(hist.present, sel)); selection = { ...sel, a: 0, b: sel.b - sel.a }; } break;
       case "silence": await applyRendered(null, "Silence", true); break;
       case "fadein": case "fadeout": {
@@ -369,7 +473,7 @@
         const len = Math.max(...clipboard.map((cs) => cs.reduce((s, c) => s + E.clipLen(c), 0)));
         const audioSel = sel && project.tracks.some((t) => isSel(t.id) && !E.isLabelTrack(t));
         if (!sel || !audioSel) { // no audio target: paste as new track(s)
-          const ts = clipboard.map((cs) => ({ id: nextId++, name: "Pasted audio", kind: "import", clips: cs.map((c) => ({ ...c })) }));
+          const ts = clipboard.map((cs) => ({ id: nextId++, name: "Pasted audio", kind: "import", clips: cs.map(E.cloneClip) }));
           commit("Paste", { ...hist.present, tracks: [...hist.present.tracks, ...ts] });
           selection = { trackId: ts[0].id, a: len, b: len };
         } else { commit("Paste", E.pasteMany(hist.present, sel, clipboard)); selection = { ...sel, a: sel.a + len, b: sel.a + len }; }
@@ -401,8 +505,8 @@
         const ranged = sel && sel.trackId === t.id && hasRange();
         const clips = ranged ? E.extract(t, sel!.a, sel!.b) : t.clips;
         const start = !ranged && sel && sel.trackId === t.id ? sel.a : 0;
-        playOffset = ranged ? sel!.a : 0; playingId = t.id;
-        try { await api.playClips(clips, fxFor(t), start); } catch (e) { toast(String(e), "err"); }
+        playOffset = ranged ? sel!.a : 0; playingId = t.id; playRange = ranged ? { a: sel!.a, b: sel!.b } : null;
+        try { await api.playClips(clipsFor(clips), fxFor(t), start); } catch (e) { toast(String(e), "err"); }
         break;
       }
       case "stop": await api.stopPlayback(); playingId = null; break;
@@ -621,6 +725,20 @@
   let lufs = $state<number | null>(null);
   const setZoom = (z: number) => (zoom = Math.max(1, Math.min(12, z)));
   const fxFor = (t: E.EditTrack) => (ab ? [] : activeChain(t.fx));
+  /** A/B "original" also bypasses the clips' own layers. */
+  const clipsFor = (cs: E.Clip[]) => (ab ? cs.map((c) => (c.fx ? { ...c, fx: [] } : c)) : cs);
+  const mixTracks = () => project.tracks.filter((t) => t.clips.length).map((t) => ({ clips: clipsFor(t.clips), fx: fxFor(t) }));
+  /** Range of the track being played (null = whole track), so a live re-render plays the same audio. */
+  let playRange: { a: number; b: number } | null = null;
+  /** Clip effects changed while playing: re-render off the audio thread and swap in at the current spot (no restart). */
+  function liveDry() {
+    if (!level.playing || playingId === null) return;
+    const done = (ok: boolean) => { if (!ok) restartIfPlaying(); };
+    if (playingId === -1) { api.updatePlayMix(mixTracks()).then(done).catch((e) => toast(String(e), "err")); return; }
+    const t = project.tracks.find((x) => x.id === playingId); if (!t) return;
+    const cs = playRange ? E.extract(t, playRange.a, playRange.b) : t.clips; if (!cs.length) return;
+    api.updatePlayClips(clipsFor(cs)).then(done).catch((e) => toast(String(e), "err"));
+  }
 
   /** Effects / A-B: push the new chain into the running playback; applied within ~80 ms, no restart. */
   function liveFx() {
@@ -636,8 +754,8 @@
     restartTimer = setTimeout(async () => {
       const t = project.tracks.find((x) => x.id === playingId); if (!t) return;
       const at = playOffset + level.play_secs;
-      playOffset = 0;
-      try { await api.playClips(t.clips, fxFor(t), at); } catch (e) { toast(String(e), "err"); }
+      playOffset = 0; playRange = null;
+      try { await api.playClips(clipsFor(t.clips), fxFor(t), at); } catch (e) { toast(String(e), "err"); }
     }, 150);
   }
   function changeFx(fx: FxSlot[], label: string) {
@@ -689,7 +807,8 @@
     const t = activeTrack(); if (!t) return;
     transcribing = true; segments = [];
     try {
-      segments = await api.transcribe(t.clips[0].src);
+      const first = t.clips.find((c) => !c.gap); if (!first) return;
+      segments = await api.transcribe(first.src);
       segmentsTrack = t.id;
       if (!segments.length) toast("No speech recognized in the first source file of this track", "warn");
     } catch (e) { toast(`Transcription failed: ${e}`, "err"); }
@@ -698,8 +817,8 @@
   async function seekSeg(s: { start: number }) {
     const t = activeTrack(); if (!t || !t.clips.length) return;
     if (level.playing) await api.stopPlayback();
-    playingId = t.id; playOffset = 0;
-    try { await api.playClips(t.clips, fxFor(t), s.start); } catch (e) { toast(String(e), "err"); }
+    playingId = t.id; playOffset = 0; playRange = null;
+    try { await api.playClips(clipsFor(t.clips), fxFor(t), s.start); } catch (e) { toast(String(e), "err"); }
   }
   async function pickWhisperModel() {
     const p = await open({ filters: [{ name: "Whisper model", extensions: ["bin"] }] });
@@ -789,7 +908,9 @@
   }
   async function importFile() {
     const sel = await open({ multiple: true, filters: [{ name: "Audio / Video", extensions: ["wav", "mp3", "flac", "ogg", "m4a", "aac", "mp4", "mkv", "aiff", "caf"] }, { name: "Audacity project", extensions: ["aup3"] }] });
-    for (const p of (Array.isArray(sel) ? sel : sel ? [sel] : [])) { if (isAup3(p)) await importAudacity(p); else await addTrack(p, "import"); }
+    const picked = Array.isArray(sel) ? sel : sel ? [sel] : [];
+    for (const p of picked.filter(isAup3)) await importAudacity(p);
+    await importMedia(picked.filter((p) => !isAup3(p)));
   }
   async function togglePlay(t: E.EditTrack) {
     if (playingId === t.id && level.playing) { await api.pausePlayback(!level.play_paused); return; }
@@ -797,12 +918,12 @@
     if (level.playing) { await api.stopPlayback(); playingId = null; }
     const sel = selection; const ranged = sel && sel.trackId === t.id && hasRange();
     const clips = ranged ? E.extract(t, sel!.a, sel!.b) : t.clips; if (!clips.length) return;
-    playOffset = ranged ? sel!.a : 0; playingId = t.id;
-    try { await api.playClips(clips, fxFor(t), ranged ? 0 : sel?.a ?? 0); } catch (e) { toast(String(e), "err"); }
+    playOffset = ranged ? sel!.a : 0; playingId = t.id; playRange = ranged ? { a: sel!.a, b: sel!.b } : null;
+    try { await api.playClips(clipsFor(clips), fxFor(t), ranged ? 0 : sel?.a ?? 0); } catch (e) { toast(String(e), "err"); }
   }
   /** Render all tracks with their effects and play the full mix. */
   async function playMix() {
-    const tracks = project.tracks.filter((t) => t.clips.length).map((t) => ({ clips: t.clips, fx: activeChain(t.fx) }));
+    const tracks = mixTracks();
     if (!tracks.length) return;
     if (level.playing) { await api.stopPlayback(); }
     playingId = -1; playOffset = 0;
@@ -880,6 +1001,16 @@
     onapply={async (fx) => { if (await applyRendered(fx, FX_NAMES[fx.type])) fxDialog = null; }}
     onaddchain={(fx) => { const t = activeTrack(); if (t) { changeFx([...(t.fx ?? []), slot(fx)], `Add ${FX_NAMES[fx.type]}`); toast(`${FX_NAMES[fx.type]} added to ${t.name}'s effects`); } fxDialog = null; }}
     onclose={() => (fxDialog = null)} />
+{/if}
+{#if importAsk}<ImportArrangeDialog files={importAsk.files} playhead={importAsk.playhead} onimport={importArranged} oncancel={() => { importAsk = null; toast("Import cancelled"); }} />{/if}
+{#if layerClip}
+  <LayerFxPanel clip={layerClip.q.clip} clipName={clipName(layerClip.q.clip)} trackName={layerClip.t.name} at={layerClip.q.a} onchange={changeLayers} onclose={() => (layerFor = null)} />
+{/if}
+{#if clipDrag?.moved}
+  {@const tn = project.tracks.find((x) => x.id === clipDrag!.toId)?.name ?? ""}
+  <div class="dragread" class:bad={!clipDrag.ok} style="left:{clipDrag.x + 14}px;top:{clipDrag.y + 16}px">
+    <b>{fmtPrecise(clipDrag.at)}</b> → {tn}{clipDrag.ok ? "" : " · overlaps audio"}{clipDrag.snapTo !== null ? " · snapped" : clipDrag.noSnap ? " · no snap (Alt)" : ""}
+  </div>
 {/if}
 {#if dropHover}<div class="drophint">Drop audio, video, an Audacity project (.aup3) or a StreamWave project (.twt)</div>{/if}
 {#if aupBusy}<div class="aupbusy panel">Importing Audacity project "{aupBusy.name}"… {Math.round(aupBusy.frac * 100)}%<div class="bar"><div style="width:{aupBusy.frac * 100}%"></div></div><div class="small">Your .aup3 file is only read, never changed.</div></div>{/if}
@@ -959,7 +1090,7 @@
           {@const lab = E.isLabelTrack(t)}
           {@const span = lab ? Math.max(len, timelineLen) : Math.max(len, timelineLen * 0.02)}
           <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-          <div class="track" class:act={selection?.trackId === t.id} class:multi={isSel(t.id) && selIds().length > 1} data-tid={t.id}>
+          <div class="track" class:act={selection?.trackId === t.id} class:multi={isSel(t.id) && selIds().length > 1} class:droptarget={clipDrag?.moved && clipDrag.toId === t.id} class:dropbad={clipDrag?.moved && clipDrag.toId === t.id && !clipDrag.ok} data-tid={t.id}>
             <div class="thead" role="toolbar" tabindex="-1" aria-label="{t.name} track" oncontextmenu={(e) => { if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return; e.preventDefault(); e.stopPropagation(); openTrackHeaderMenu(t, e); }}>
               {#if !lab}<button class="play" onclick={() => togglePlay(t)}>{playingId === t.id && level.playing && !level.play_paused ? "❚❚" : "▶"}</button>{/if}
               {#if playingId === t.id && level.playing}<button class="play" title="Stop" onclick={() => run("stop")}>■</button>{/if}
@@ -970,7 +1101,7 @@
                   onblur={(e) => renameTrack(t.id, e.currentTarget.value)} />
               {:else}
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div class="tname" title={t.clips.map((c) => c.src).join("\n")} ondblclick={() => (renaming = t.id)}>{t.name}</div>
+                <div class="tname" title={t.clips.filter((c) => !c.gap).map((c) => c.src).join("\n")} ondblclick={() => (renaming = t.id)}>{t.name}</div>
               {/if}
               <span class="tag {t.kind}">{t.kind}</span>
               {#if t.muted}<button class="tag flag" title="Muted in Audacity (left out of Send Back to Video). Click to unmute." onclick={() => toggleTrackFlag(t.id, "muted")}>muted</button>{/if}
@@ -999,6 +1130,13 @@
               {/if}
               <button class="x" onclick={() => removeTrack(t.id)} title="Remove from project (file is kept)">✕</button>
             </div>
+            <div class="lane">
+            {#if clipDrag?.moved && clipDrag.toId === t.id}
+              {@const px = pps(t.id)}
+              {@const sl = scrollEl(t.id)?.scrollLeft ?? 0}
+              <div class="ghost" class:bad={!clipDrag.ok} style="left:{clipDrag.at * px - sl}px;width:{Math.max(3, clipDrag.len * px)}px"><span>{clipDrag.name}</span></div>
+              {#if clipDrag.snapTo !== null}<div class="snapline" style="left:{clipDrag.snapTo * px - sl}px"></div>{/if}
+            {/if}
             <div class="scroll" onscroll={syncScroll}><div style="width:{zoom * 100 * span / timelineLen}%">
             {#if lab}
               <LabelLane labels={t.labels ?? []} duration={span} active={selection?.trackId === t.id} selection={sel} focusId={focusLabel}
@@ -1012,12 +1150,14 @@
               selection={sel} progress={progressFor(t)} markers={project.markers ?? []} bounds={E.clipBounds(t)}
               spec={t.view === "spectrogram" ? specs.get(t.id)?.spec ?? null : null} specScale={t.specScale ?? "log"} specColors={t.specColors ?? "classic"}
               onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)} onpickclip={(at) => pickClip(t, at)} oncontext={(at, e) => openAudioMenu(t, at, e)}
+              clips={laneClips(t)} movingIndex={clipDrag?.moved && clipDrag.fromId === t.id ? clipDrag.index : null}
+              ongrab={(i, e, at) => grabClip(t, i, e, at)} onlayers={(i) => openLayers(t, i)}
               color={t.kind === "obs" ? "#8b7bff" : t.kind === "recovered" ? "#ffb020" : "#19d3b0"} />
             {/if}
-            </div></div>
+            </div></div></div>
           </div>
         {/each}
-        {#if project.tracks.length}<div class="small hint2">Drag to select (drag up/down for more tracks, Ctrl-click adds a track) · Shift-click to extend · Ctrl+X/C/V · Del · Ctrl+A · Ctrl+K split · Ctrl+J join · double-click a clip · Ctrl+B label · Ctrl+Z / Ctrl+Y · Space play/pause · M marker · [ ] jump · Ctrl+scroll or +/− zoom ({zoom.toFixed(1)}×) — edits never change your original files</div>{/if}
+        {#if project.tracks.length}<div class="small hint2">Drag to select (drag up/down for more tracks, Ctrl-click adds a track) · drag a clip's title bar to move it (Alt = no snapping, Esc cancels) · ◧ = Layering Effects · Shift-click to extend · Ctrl+X/C/V · Del · Ctrl+A · Ctrl+K split · Ctrl+J join · double-click a clip · Ctrl+B label · Ctrl+Z / Ctrl+Y · Space play/pause · M marker · [ ] jump · Ctrl+scroll or +/− zoom ({zoom.toFixed(1)}×) — edits never change your original files</div>{/if}
       </div>
     </section>
 
@@ -1042,7 +1182,7 @@
       {#if showExport && activeTrack()}
         <ExportPanel trackName={activeTrack()!.name} onexport={doExport} onclose={() => (showExport = false)} />
       {/if}
-      <StudioPanel enabled={!!activeTrack()} {ab} busy={studioBusy} {analysis} onrun={studioSound} onab={() => { ab = !ab; lufs = null; liveFx(); }} />
+      <StudioPanel enabled={!!activeTrack()} {ab} busy={studioBusy} {analysis} onrun={studioSound} onab={() => { ab = !ab; lufs = null; liveFx(); liveDry(); }} />
       {#if activeTrack()}
         <div class="panel">
           <h3>Transcript</h3>
@@ -1063,7 +1203,7 @@
           {/if}
         </div>
       {/if}      <FxPanel track={activeTrack()} {ab} {lufs} hasSelection={hasRange() && selection?.trackId === activeTrack()?.id}
-        onchange={changeFx} onlearn={learnNoise} onab={() => { ab = !ab; lufs = null; liveFx(); }} onmeasure={measure} />
+        onchange={changeFx} onlearn={learnNoise} onab={() => { ab = !ab; lufs = null; liveFx(); liveDry(); }} onmeasure={measure} />
       <ObsPanel {settings} onRecordingReady={importObs} onstatus={(s) => (obs = s)} onstate={onObsState} />
       {#if project.tracks.some((t) => t.video)}
         <button class="sendvid" onclick={sendToVideo}>🎬 Send back to video</button>
@@ -1146,6 +1286,15 @@
   .empty { color: var(--muted); text-align: center; padding: 60px; border: 2px dashed var(--line); border-radius: 12px; }
   .track.act { border-color: #19d3b066; }
   .scroll { overflow-x: auto; }
+  .lane { position: relative; overflow: hidden; }
+  .ghost { position: absolute; top: 0; bottom: 0; z-index: 5; pointer-events: none; border: 2px dashed #19d3b0; background: #19d3b030; border-radius: 4px; box-sizing: border-box; }
+  .ghost span { position: absolute; top: 1px; left: 4px; font-size: 10px; color: #cfeee7; white-space: nowrap; }
+  .ghost.bad { border-color: var(--rec); background: #ff3b5c30; }
+  .snapline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid #4da3ff; z-index: 6; pointer-events: none; }
+  .track.droptarget { border-color: #19d3b0; box-shadow: 0 0 0 1px #19d3b0, 0 0 14px #19d3b033; }
+  .track.dropbad { border-color: var(--rec); box-shadow: 0 0 0 1px var(--rec); }
+  .dragread { position: fixed; z-index: 80; pointer-events: none; background: #0e1117ee; border: 1px solid #19d3b0; color: var(--text); font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+  .dragread.bad { border-color: var(--rec); } .dragread b { font-variant-numeric: tabular-nums; color: var(--accent); }
   .paused { font-size: 14px; color: var(--warn); letter-spacing: .1em; }
   .sendvid { width: 100%; padding: 10px; font-weight: 600; }
   .proj { color: var(--muted); font-size: 13px; } .recent { width: 130px; }
