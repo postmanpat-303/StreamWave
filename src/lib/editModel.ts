@@ -3,8 +3,10 @@
 // and History keeps those values so undo/redo is cheap and exact.
 
 export interface Source { path: string; name: string; duration: number; sampleRate: number; channels: number; peaks: number[]; }
-/** seconds inside the source file; `split` = a deliberate clip boundary before this clip (Split/Join) */
-export interface Clip { src: string; start: number; end: number; split?: boolean; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; }
+/** seconds inside the source file; `split` = a deliberate clip boundary before this clip (Split/Join).
+ * `gap` = silence (src ""), used to position clips freely on the timeline (0.10.0).
+ * `fx` = the clip's own ordered effect stack ("Layering Effects"), owned by this clip instance. */
+export interface Clip { src: string; start: number; end: number; split?: boolean; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; gap?: boolean; fx?: FxSlot[]; }
 export type ClipProps = { gain_db?: number; fade_in_ms?: number; fade_out_ms?: number };
 /** Text label on a label track (t1 > t0 for a range label). */
 export interface Label { id: number; t0: number; t1: number; text: string; }
@@ -20,7 +22,17 @@ export interface Project { tracks: EditTrack[]; markers?: Marker[]; }
 export interface Selection { trackId: number; a: number; b: number; tracks?: number[]; }
 
 const EPS = 1e-9;
+/** Overlap tolerance for clip placement (well below one sample at 192 kHz). */
+const POS_EPS = 1e-7;
 export const clipLen = (c: Clip) => c.end - c.start;
+export const GAP_SRC = "";
+export const isGap = (c: Clip) => !!c.gap;
+/** Silence of `len` seconds. */
+export const gap = (len: number): Clip => ({ src: GAP_SRC, start: 0, end: len, gap: true });
+/** Round a timeline position to a whole sample at `rate` (no-op without a rate). */
+export const snapToSamples = (t: number, rate: number) => (rate > 0 ? Math.round(t * rate) / rate : t);
+/** Independent copy of a clip (its effect stack is copied too, so editing one never changes the other). */
+export const cloneClip = (c: Clip): Clip => ({ ...c, ...(c.fx ? { fx: c.fx.map((s) => ({ ...s, fx: structuredClone(s.fx) })) } : {}) });
 export const trackLen = (t: EditTrack) => Math.max(t.clips.reduce((s, c) => s + clipLen(c), 0), ...(t.labels ?? []).map((l) => l.t1));
 export const isLabelTrack = (t: EditTrack) => t.kind === "labels";
 export const norm = (a: number, b: number): [number, number] => (a <= b ? [a, b] : [b, a]);
@@ -66,22 +78,30 @@ export function removeRange(t: EditTrack, a: number, b: number): EditTrack {
 export function insertAt(t: EditTrack, at: number, clips: Clip[]): EditTrack {
   at = Math.max(0, Math.min(at, trackLen(t)));
   const { before, after } = partition(t.clips, at, at);
-  return { ...t, clips: merge([...before, ...clips.map((c) => ({ ...c })), ...after]) };
+  return { ...t, clips: merge([...before, ...clips.map(cloneClip), ...after]) };
 }
 
-const tidy = (c: Clip, first: boolean): Clip => { const { split, ...rest } = c; return split && !first ? { ...rest, split } : rest; };
-/** Re-join adjacent clips that are contiguous in the same source with identical gain/fades
- * (keeps the model tidy after undoable splits; clips with different props or deliberate split boundaries stay separate). */
+const tidy = (c: Clip, first: boolean): Clip => {
+  if (c.gap) return gap(clipLen(c));
+  const { split, ...rest } = c; if (rest.fx && !rest.fx.length) delete rest.fx;
+  return split && !first ? { ...rest, split } : rest;
+};
+const sameFx = (a: Clip, b: Clip) => JSON.stringify(a.fx ?? []) === JSON.stringify(b.fx ?? []);
+/** Re-join adjacent clips that are contiguous in the same source with identical gain/fades/effects
+ * (keeps the model tidy after undoable splits; clips with different props or deliberate split boundaries stay separate).
+ * Neighbouring gaps become one gap and trailing gaps are dropped, so a track ends where its last audio ends. */
 function merge(clips: Clip[]): Clip[] {
   const sameProps = (a: Clip, b: Clip) =>
-    (a.gain_db ?? 0) === (b.gain_db ?? 0) && (a.fade_in_ms ?? 0) === (b.fade_in_ms ?? 0) && (a.fade_out_ms ?? 0) === (b.fade_out_ms ?? 0);
+    (a.gain_db ?? 0) === (b.gain_db ?? 0) && (a.fade_in_ms ?? 0) === (b.fade_in_ms ?? 0) && (a.fade_out_ms ?? 0) === (b.fade_out_ms ?? 0) && sameFx(a, b);
   const out: Clip[] = [];
   for (const c of clips) {
     if (clipLen(c) < EPS) continue;
     const p = out[out.length - 1];
-    if (p && !c.split && p.src === c.src && Math.abs(p.end - c.start) < EPS && sameProps(p, c)) out[out.length - 1] = { ...p, end: c.end };
+    if (p && p.gap && c.gap) out[out.length - 1] = gap(clipLen(p) + clipLen(c));
+    else if (p && !c.split && !c.gap && !p.gap && p.src === c.src && Math.abs(p.end - c.start) < EPS && sameProps(p, c)) out[out.length - 1] = { ...p, end: c.end };
     else out.push(tidy(c, out.length === 0));
   }
+  while (out.length && out[out.length - 1].gap) out.pop();
   return out;
 }
 
@@ -118,7 +138,7 @@ export function applyClipProps(p: Project, sel: Selection, props: ClipProps): Pr
   return mapTrack(p, sel.trackId, (t) => {
     const { before, inside, after } = partition(t.clips, sel.a, sel.b);
     if (!inside.length) return t;
-    return { ...t, clips: merge([...before, ...inside.map((c) => ({ ...c, ...props })), ...after]) };
+    return { ...t, clips: merge([...before, ...inside.map((c) => (c.gap ? c : { ...c, ...props })), ...after]) };
   });
 }
 
@@ -206,12 +226,94 @@ export function trimMany(p: Project, sel: Selection): Project {
     ? { ...t, labels: (t.labels ?? []).filter((l) => l.t1 >= a - EPS && l.t0 <= b + EPS).map((l) => ({ ...l, t0: Math.max(l.t0, a) - a, t1: Math.min(l.t1, b) - a })) }
     : { ...t, clips: merge(extract(t, a, b)) });
 }
-/** The clip under time t on a track, as a timeline range. */
+/** The audio clip under time t on a track, as a timeline range (gaps are not clips). */
 export function clipAt(t: EditTrack, at: number): { a: number; b: number } | null {
-  let pos = 0;
-  for (const c of t.clips) { const l = clipLen(c); if (at >= pos - EPS && at <= pos + l + EPS) return { a: pos, b: pos + l }; pos += l; }
-  return null;
+  const p = audioClipAt(t, at); return p ? { a: p.a, b: p.b } : null;
 }
+
+// ---- positioned clips, moving clips, multi-file import (0.10.0) ----------------
+/** A clip with its timeline position. */
+export interface Placed { clip: Clip; index: number; a: number; b: number; }
+export function placed(t: EditTrack): Placed[] {
+  let pos = 0;
+  return t.clips.map((clip, index) => { const a = pos; pos += clipLen(clip); return { clip, index, a, b: pos }; });
+}
+/** Audio clips only (no gaps), with positions. */
+export const audioClips = (t: EditTrack) => placed(t).filter((p) => !p.clip.gap);
+export function audioClipAt(t: EditTrack, at: number): Placed | null {
+  return audioClips(t).find((p) => at >= p.a - EPS && at <= p.b + EPS) ?? null;
+}
+/** Would a clip of `len` seconds at `at` overlap existing audio on the track? */
+export function canPlace(t: EditTrack, at: number, len: number): boolean {
+  return !isLabelTrack(t) && at >= 0 && !audioClips(t).some((q) => q.a < at + len - POS_EPS && q.b > at + POS_EPS);
+}
+/** Put clip c at `at` into silence (a gap) or after the end of the track. null if it would overlap audio. */
+export function placeClip(t: EditTrack, at: number, c: Clip): EditTrack | null {
+  const len = clipLen(c), L = trackLen(t);
+  if (!canPlace(t, at, len)) return null;
+  const ins: Clip = { ...c, split: true }; // keep it its own clip where it lands
+  if (at >= L - POS_EPS) {
+    const g = at - L;
+    return { ...t, clips: merge([...t.clips, ...(g > EPS ? [gap(g)] : []), ins]) };
+  }
+  // the whole region [at, at+len] is silence inside the track: replace that silence with the clip
+  const { before, after } = partition(t.clips, at, at + len);
+  return { ...t, clips: merge([...before, ins, ...after]) };
+}
+export type MoveResult = { ok: true; project: Project; trackId: number; at: number } | { ok: false; reason: "overlap" | "invalid" };
+/**
+ * Move audio clip `index` of track `fromId` to time `at` on track `toId` (metadata only: source, trim, gain,
+ * fades and the clip's effects travel with it; nothing else on either track shifts). `at` is rounded to a whole
+ * sample at `rate` (the target track's render rate). Refuses to overlap existing audio.
+ */
+export function moveClip(p: Project, fromId: number, index: number, toId: number, at: number, rate: number): MoveResult {
+  const from = p.tracks.find((t) => t.id === fromId), to = p.tracks.find((t) => t.id === toId);
+  if (!from || !to || isLabelTrack(from) || isLabelTrack(to)) return { ok: false, reason: "invalid" };
+  const c = from.clips[index]; if (!c || c.gap) return { ok: false, reason: "invalid" };
+  at = snapToSamples(Math.max(0, at), rate);
+  const lifted: EditTrack = { ...from, clips: merge(from.clips.map((x, i) => (i === index ? gap(clipLen(c)) : x))) };
+  const target = placeClip(fromId === toId ? lifted : to, at, c);
+  if (!target) return { ok: false, reason: "overlap" };
+  return { ok: true, trackId: toId, at, project: { ...p, tracks: p.tracks.map((t) => (t.id === toId ? target : t.id === fromId ? lifted : t)) } };
+}
+/** Pick the closest snap point for a clip [start, start+len): either edge may snap. */
+export function snapClip(start: number, len: number, points: number[], tol: number): { t: number; to: number | null } {
+  let best: { t: number; to: number | null; d: number } = { t: start, to: null, d: tol };
+  for (const q of points) {
+    for (const [cand, d] of [[q, Math.abs(start - q)], [q - len, Math.abs(start + len - q)]] as const) {
+      if (d <= best.d && cand >= 0) best = { t: cand, to: q, d };
+    }
+  }
+  return { t: best.t, to: best.to };
+}
+export interface ImportFile { path: string; name: string; duration: number; sampleRate: number; }
+export type ImportMode = "sequential" | "tracks";
+/**
+ * Add several imported files in one edit. "sequential": one new track, files back to back in the given order
+ * from `start` (each clip starts exactly where the previous ends; no gaps, no overlaps). "tracks": one new track
+ * per file, all starting at `start`, named after the file. Clips reference the files directly (no copies).
+ */
+export function arrangeImport(p: Project, files: ImportFile[], mode: ImportMode, start: number, newId: () => number, kind = "import"): { project: Project; trackIds: number[] } {
+  files = files.filter((f) => f.duration > 0);
+  if (!files.length) return { project: p, trackIds: [] };
+  const lead = (rate: number): Clip[] => { const s = snapToSamples(Math.max(0, start), rate); return s > EPS ? [gap(s)] : []; };
+  const clip = (f: ImportFile, split: boolean): Clip => ({ src: f.path, start: 0, end: f.duration, ...(split ? { split: true } : {}) });
+  const tracks: EditTrack[] = mode === "sequential"
+    ? [{ id: newId(), name: files.length > 1 ? `${files[0].name} + ${files.length - 1} more` : files[0].name, kind,
+        clips: merge([...lead(files[0].sampleRate), ...files.map((f, i) => clip(f, i > 0))]) }]
+    : files.map((f) => ({ id: newId(), name: f.name, kind, clips: merge([...lead(f.sampleRate), clip(f, false)]) }));
+  return { project: { ...p, tracks: [...p.tracks, ...tracks] }, trackIds: tracks.map((t) => t.id) };
+}
+/** Replace the effect stack of one clip (parameters only; Layering Effects). */
+export function setClipFx(p: Project, trackId: number, index: number, fx: FxSlot[]): Project {
+  return mapTrack(p, trackId, (t) => {
+    const c = t.clips[index]; if (!c || c.gap) return t;
+    const clips = [...t.clips]; const n: Clip = { ...c, fx }; if (!fx.length) delete n.fx; clips[index] = n;
+    return { ...t, clips };
+  });
+}
+/** Does the project use 0.10.0-only clip data (gaps or clip effects)? */
+export const usesClipFeatures = (p: Project) => p.tracks.some((t) => t.clips.some((c) => c.gap || (c.fx && c.fx.length)));
 
 // ---- split / join clips ---------------------------------------------------------
 /** Put a deliberate clip boundary at time t (no-op at the very start or end). */

@@ -91,6 +91,27 @@ async fn play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>
     let d = render::render_mix(&cache, &tracks).map_err(|e| e.to_string())?;
     st.send(Cmd::PlaySession(audio::playback::PlayRequest { dry: std::sync::Arc::new(d), slots: vec![], gains: vec![], start_secs: start.unwrap_or(0.0) }))
 }
+/// Hand re-rendered dry audio to the running playback (no restart). Ok(false) = not playing or the format
+/// changed, so the app restarts playback instead.
+fn hand_over(st: &AppState, d: waveform::Decoded) -> Result<bool, String> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let p = &st.audio.shared.play;
+    if !(p.playing.load(Relaxed) || p.paused.load(Relaxed)) { return Ok(false) }
+    if p.src_rate.load(Relaxed) != d.sample_rate as u64 || p.src_ch.load(Relaxed) != d.channels as u64 { return Ok(false) }
+    st.send(Cmd::UpdateDry(std::sync::Arc::new(d)))?; Ok(true)
+}
+/// Clip effects changed while a track plays: re-render its clips and swap them in at the current position.
+#[tauri::command]
+async fn update_play_clips(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, clips: Vec<render::ClipSpec>) -> Result<bool, String> {
+    let d = render::render(&cache, &clips).map_err(|e| e.to_string())?;
+    hand_over(&st, d)
+}
+/// Same for "Mix all" playback.
+#[tauri::command]
+async fn update_play_mix(st: State<'_, AppState>, cache: State<'_, render::DecodeCache>, tracks: Vec<render::TrackSpec>) -> Result<bool, String> {
+    let d = render::render_mix(&cache, &tracks).map_err(|e| e.to_string())?;
+    hand_over(&st, d)
+}
 #[tauri::command] fn update_fx(st: State<AppState>, fx: Vec<fx::Slot>) -> Result<(), String> { st.send(Cmd::UpdateFx(fx)) }
 #[tauri::command] fn pause_playback(st: State<AppState>, pause: bool) -> Result<(), String> { st.send(Cmd::PausePlay(pause)) }
 
@@ -432,7 +453,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, install_kind, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
+            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, update_play_clips, update_play_mix, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())

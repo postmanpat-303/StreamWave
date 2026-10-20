@@ -2,6 +2,35 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.10.0 (2026-10-20)
+
+### Importing several files at once
+- **Choose how 2+ files are laid out.** Importing two or more audio files together (File → Import, the Import button, or dropping them on the window) now asks first:
+  - **One after another on one track**: in the order shown (reorder with ↑/↓), starting at 0:00 or at the cursor. Each clip starts exactly where the previous one ends, at the decoded length of its file, with no gaps or overlaps, even when the files have different formats and sample rates.
+  - **One track per file**: every file starts at the same time, on its own track named after the file.
+- **Cancel** leaves the project untouched. A single file imports exactly as before. Files are referenced, not copied, and the whole import is one undo step.
+
+### Moving clips
+- **Drag a clip by its title bar** to move it along its track, or onto another track. You can drop it past the end of the project; the timeline grows, and the project length is the end of the last clip.
+- While dragging you see a ghost of the clip, the target track lights up, and a readout shows the exact start time and track. The original clip is dimmed. **Esc** cancels.
+- **Snapping** to markers, clip edges, the cursor and 0:00 is on by default; hold **Alt** to place freely.
+- **Overlaps are refused.** A clip can't be dropped where it would overlap audio on the target track: the ghost turns red with "overlaps audio" and nothing changes. Empty space between clips is real silence (it plays and exports as silence).
+- Moves only change where a clip sits. The audio, trims, gain, fades and effects go with the clip. Positions are whole samples at the track's rate, so moving clips around never drifts. Undo/redo, save and reopen all work.
+
+### Layering Effects (per-clip effect stacks)
+- **◧ button** on every clip's title bar, and **Layering Effects…** in the clip's right-click menu, open a panel with that clip's own effects as a stack of layers.
+- The top layer runs first: list order is processing order. Each layer has an on/off (bypass) toggle and can be removed. Click a layer to edit its settings. Reorder by dragging the ⋮⋮ grip, with the ↑/↓ buttons, or from the keyboard (↑/↓ to pick, **Alt+↑/↓** to move, Space toggles, Del removes). Each change is one undo step.
+- Layers use the same effects as track effects (EQ, compressor, gate, de-esser, limiter, loudness, normalize, gain, fades, AI denoise), running in the same engine. Noise reduction stays a track effect because it needs a learned noise profile.
+- **Order**: clip layers → clip gain/fades → track effects → output. The clip's ◧ button shows how many layers are active.
+- **Ownership**: layers belong to that one clip. Copy/paste gives the copy its own stack, and splitting a clip gives each piece its own copy, so editing one never changes another.
+- **Live while playing**: editing a layer during playback hands the new audio to the player without stopping it (in the rare case the audio format changes, playback restarts instead). Playback and export run the same code, and a test checks they produce identical samples.
+
+### Projects
+- `.twt` files that use free clip positions or clip layers are saved as format version 2. Older StreamWave versions refuse those with a clear message instead of opening them wrongly. Projects without them still save as version 1. Every older `.twt` still opens.
+
+### Credit and licence note
+- The layer list was designed after looking at how the open-source Vital synth (GPL-3.0) presents its effect order: a compact reorderable list with on/off toggles, kept separate from the parameter editor. No Vital code was used. StreamWave's layers are its own code on its existing effects engine.
+
 ## 0.9.0 (2026-10-19)
 
 ### Recording

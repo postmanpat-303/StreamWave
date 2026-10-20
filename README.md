@@ -76,6 +76,9 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | 📤 **Batch export** *(new in 0.9.0)* | Export every track as a 24-bit WAV into one folder in a single pass, each brought to −14, −16 or −23 LUFS. |
 | ▶️ **Mixdown playback** *(new in 0.9.0)* | **▶ Mix all** plays every track together with its effects, so you can hear the whole project. Export is still one track at a time. |
 | 📝 **Whisper transcription** *(new in 0.9.0)* | Transcribe a track on your own computer with whisper.cpp and any ggml model (not bundled), then click a line to play from there. No cloud. |
+| 📥 **Multi-file import** *(new in 0.10.0)* | Import or drop several files at once and choose: **one after another on one track** (each starting exactly where the last ends, at the cursor or 0:00) or **one track per file**, all lined up. Mixed formats and sample rates are fine, Cancel changes nothing, and one Ctrl+Z undoes it all. |
+| ↔️ **Move clips** *(new in 0.10.0)* | Drag a clip by its title bar along the timeline or onto another track, even past the end. Ghost, target highlight and exact time readout while dragging; snaps to markers, clip edges and the cursor (Alt = free). Overlapping audio is refused. Positions are whole samples, so nothing drifts. |
+| ◧ **Layering Effects** *(new in 0.10.0)* | Give a single clip its own stack of effects: add, bypass, edit and drag (or Alt+↑/↓) to reorder. The list order is the processing order, running before the clip's gain/fades and the track effects. Each clip owns its stack; copies and split pieces get their own. Heard live, exported identically. |
 | 🎧 **Virtual output hint** *(new in 0.9.0)* | StreamWave recognises virtual audio devices (VB-CABLE, VoiceMeeter, BlackHole on Mac) in the output list and explains how to send its sound into OBS, Discord or Zoom. The user guide has the setup steps. |
 
 ## 📸 Screenshots
@@ -171,7 +174,8 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **Voice / music separation**: pull your voice out of a stream recording with game audio or music
 - [ ] **Auto-chapters**: chapter markers from topic changes and OBS scenes, exported to YouTube timestamps
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
-- [ ] Multi-track mixing view, clip fades and crossfades
+- [ ] Multi-track mixdown export, crossfades and overlapping clips
+- [x] Multi-file import arrangement, clip moving across tracks, per-clip Layering Effects (0.10.0)
 - [x] In-app update check (0.6.0)
 - [x] Audacity 3 (`.aup3`) project import (0.7.0)
 - [x] Spectrogram view, multi-track selection, label tracks, split / join clips (0.8.0)
@@ -200,7 +204,7 @@ The Windows installer includes it. On Linux, install it from your distro. On Mac
 
 **Can StreamWave replace Audacity?**
 If you've used Audacity, you'll feel at home, with live effects, OBS sync and recordings that survive a crash.
-For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing (StreamWave shows a spectrogram but doesn't edit in it), macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave can select and edit several tracks together and play them as a mix (0.9.0), but it exports one track at a time rather than mixing down a full multitrack session.
+For recording, cleaning up and editing voice, podcasts and stream audio, it can be all you need. It is not a full replacement, though. Audacity has many years of features StreamWave doesn't have: plug-in effects (VST, LV2, Nyquist), spectral editing (StreamWave shows a spectrogram but doesn't edit in it), macros, MIDI and a much larger set of built-in effects and analysis tools. StreamWave can select and edit several tracks together, move clips between them (0.10.0) and play them as a mix (0.9.0), but it exports one track at a time rather than mixing down a full multitrack session.
 You can bring existing work across: **File → Import Audacity Project…** (or drag an `.aup3` onto the window) reads Audacity 3 projects. Tracks, names, clip positions and trims, the audio itself (16-bit, 24-bit and 32-bit float), track gain, pan, mute and solo, clip envelopes and labels (as markers) come across. Audacity effects and note/time tracks are skipped, and StreamWave tells you exactly what it left out. Your `.aup3` file is opened read-only and never changed; the audio is copied into WAV files next to your StreamWave project (or into your recordings folder under *Audacity imports* if the project isn't saved yet).
 *Audacity® is a trademark of its respective owners. StreamWave is an independent project and isn't affiliated with or endorsed by Audacity or Muse Group. The importer was written from scratch and contains no Audacity code.*
 

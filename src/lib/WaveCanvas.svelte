@@ -2,10 +2,16 @@
   import { renderSpec, freqTicks, type Spec } from "./spectrogram";
   import type { SpecColors, SpecScale } from "./editModel";
   type Phase = "down" | "move";
-  let { peaks, duration, selection = null, progress = 0, color = "#19d3b0", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic", onselect, onpickclip, oncontext }:
+  /** An audio clip drawn on this lane (gaps are not listed). `fx` = active Layering Effects. */
+  type LaneClip = { a: number; b: number; index: number; name: string; fx: number };
+  let { peaks, duration, selection = null, progress = 0, color = "#19d3b0", active = false, markers = [], bounds = [], spec = null, specScale = "log", specColors = "classic",
+        clips = [], movingIndex = null, onselect, onpickclip, oncontext, ongrab, onlayers }:
     { peaks: number[]; duration: number; selection?: { a: number; b: number } | null; progress?: number; color?: string; active?: boolean; markers?: { id: number; time: number; label: string }[];
       bounds?: { t: number; split: boolean }[]; spec?: Spec | null; specScale?: SpecScale; specColors?: SpecColors;
-      onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onpickclip?: (t: number) => void; oncontext?: (t: number, e: MouseEvent) => void } = $props();
+      clips?: LaneClip[]; movingIndex?: number | null;
+      onselect: (a: number, b: number, e: PointerEvent, phase: Phase) => void; onpickclip?: (t: number) => void; oncontext?: (t: number, e: MouseEvent) => void;
+      /** pointer down on a clip's title bar: start moving it */ ongrab?: (index: number, e: PointerEvent, grabAt: number) => void;
+      /** the clip's Layering Effects button */ onlayers?: (index: number) => void } = $props();
   let canvas: HTMLCanvasElement;
   let w = $state(800), h = $state(90);
   let anchor = 0, dragging = false;
@@ -22,6 +28,8 @@
     canvas.width = w * dpr; canvas.height = h * dpr;
     const ctx = canvas.getContext("2d")!;
     ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h);
+    // clip blocks: audio clips get a faint body, silence (gaps) stays empty
+    if (duration > 0) for (const c of clips) { ctx.fillStyle = "#ffffff08"; ctx.fillRect((c.a / duration) * w, 0, ((c.b - c.a) / duration) * w, h); }
     if (specImg) {
       const off = document.createElement("canvas"); off.width = specImg.width; off.height = specImg.height;
       off.getContext("2d")!.putImageData(specImg, 0, 0);
@@ -73,6 +81,16 @@
   {#each markers.filter((m) => m.time <= duration) as m (m.id)}
     <div class="mk" style="left:{pct(m.time)}%" title={m.label}><span>{m.label}</span></div>
   {/each}
+  {#each clips as c (c.index)}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="clipbar" class:moving={movingIndex === c.index} style="left:{pct(c.a)}%;width:{pct(c.b - c.a)}%" title="{c.name}: drag to move (Alt = no snapping)"
+      onpointerdown={(e) => { if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return; e.preventDefault(); e.stopPropagation(); ongrab?.(c.index, e, timeAt(e)); }}
+      oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); oncontext?.(timeAt(e), e); }}>
+      <span class="cn">{c.name}</span>
+      {#if onlayers}<button class="lfx" class:has={c.fx > 0} title="Layering Effects for this clip" aria-label="Layering Effects for clip {c.name}" onclick={(e) => { e.stopPropagation(); onlayers(c.index); }}>◧{c.fx ? ` ${c.fx}` : ""}</button>{/if}
+    </div>
+    {#if movingIndex === c.index}<div class="clipdim" style="left:{pct(c.a)}%;width:{pct(c.b - c.a)}%"></div>{/if}
+  {/each}
   {#if selection}
     {#if selection.b - selection.a > 0.0005}
       <div class="sel" style="left:{pct(selection.a)}%;width:{pct(selection.b - selection.a)}%"></div>
@@ -90,5 +108,12 @@
   .mk { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px dashed #ffb020; pointer-events: none; }
   .mk span { position: absolute; top: 0; left: 2px; font-size: 9px; color: #ffb020; white-space: nowrap; background: #0e1117cc; padding: 0 3px; border-radius: 3px; }
   .cursor { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; pointer-events: none; }
+  .clipbar { position: absolute; top: 0; height: 16px; display: flex; align-items: center; gap: 4px; padding: 0 3px 0 5px; box-sizing: border-box; min-width: 4px;
+    background: #19d3b02a; border: 1px solid #19d3b055; border-radius: 4px 4px 0 0; cursor: grab; overflow: hidden; touch-action: none; z-index: 2; }
+  .clipbar:hover { background: #19d3b044; } .clipbar.moving { opacity: .35; cursor: grabbing; }
+  .cn { flex: 1; min-width: 0; font-size: 9.5px; color: #cfeee7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .lfx { flex: none; font-size: 10px; line-height: 12px; padding: 0 4px; border-radius: 3px; background: #0e1117cc; border: 1px solid #ffffff33; color: #cfeee7; cursor: pointer; }
+  .lfx.has { color: #0e1117; background: #19d3b0; border-color: #19d3b0; font-weight: 700; }
+  .clipdim { position: absolute; top: 0; bottom: 0; background: #0e1117aa; pointer-events: none; z-index: 1; }
   .tick { position: absolute; left: 2px; transform: translateY(-50%); font-size: 9px; color: #fff; background: #0008; padding: 0 3px; border-radius: 3px; pointer-events: none; }
 </style>

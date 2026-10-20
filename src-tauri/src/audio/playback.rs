@@ -7,6 +7,10 @@
 //! The cpal callback only pops from a lock-free ring (no locks, no allocation). The render thread
 //! keeps ~80 ms queued, so slider moves and A/B are heard within about a tenth of a second without
 //! restarting. The chain is the same code export uses, so playback == export.
+//!
+//! Clip effects (Layering Effects) live in the dry render. When they change, the dry audio is re-rendered
+//! on a worker thread and handed over as a new `Arc` (`Ctl::Dry`); the render-ahead thread swaps it in at
+//! the current position and the track chain keeps its state. The audio callback never sees any of this.
 use crate::fx::{self, Chain, Slot};
 use crate::waveform::Decoded;
 use cpal::traits::{DeviceTrait, StreamTrait};
@@ -19,16 +23,19 @@ use std::time::Duration;
 
 pub struct PlayRequest { pub dry: Arc<Decoded>, pub slots: Vec<Slot>, pub gains: Vec<Option<f32>>, pub start_secs: f64 }
 
-pub enum Ctl { Fx(Vec<Slot>), Gains(u64, Vec<Option<f32>>) }
+pub enum Ctl { Fx(Vec<Slot>), Gains(u64, Vec<Option<f32>>), Dry(Arc<Decoded>) }
 
 /// Shared with the UI meter thread and the callback.
 #[derive(Default)]
-pub struct PlayShared { pub pos: AtomicU64, pub len: AtomicU64, pub rate: AtomicU64, pub playing: AtomicBool, pub paused: AtomicBool, pub done: AtomicBool, pub underruns: AtomicU64 }
+pub struct PlayShared { pub pos: AtomicU64, pub len: AtomicU64, pub rate: AtomicU64, pub playing: AtomicBool, pub paused: AtomicBool, pub done: AtomicBool, pub underruns: AtomicU64,
+    /// Rate / channels of the dry audio being played (a re-render can only be swapped in if they match).
+    pub src_rate: AtomicU64, pub src_ch: AtomicU64 }
 
 pub struct Session { _stream: cpal::Stream, stop: Arc<AtomicBool>, ctl: Sender<Ctl>, render: Option<JoinHandle<()>> }
 
 impl Session {
     pub fn update_fx(&self, slots: Vec<Slot>) { let _ = self.ctl.send(Ctl::Fx(slots)); }
+    pub fn update_dry(&self, d: Arc<Decoded>) { let _ = self.ctl.send(Ctl::Dry(d)); }
 }
 impl Drop for Session {
     fn drop(&mut self) { self.stop.store(true, Relaxed); if let Some(h) = self.render.take() { let _ = h.join(); } }
@@ -131,6 +138,7 @@ pub fn start(dev: &cpal::Device, req: PlayRequest, sh: Arc<PlayShared>, buffer_f
     let start_src = ((req.start_secs.max(0.0) * d.sample_rate as f64) as usize).min(total_src);
     let to_dev = |src: usize| (src as f64 * out_sr as f64 / d.sample_rate as f64) as u64;
     sh.rate.store(out_sr as u64, Relaxed);
+    sh.src_rate.store(d.sample_rate as u64, Relaxed); sh.src_ch.store(d.channels as u64, Relaxed);
     sh.len.store(to_dev(total_src), Relaxed);
     sh.pos.store(to_dev(start_src), Relaxed);
     sh.done.store(false, Relaxed); sh.paused.store(false, Relaxed); sh.underruns.store(0, Relaxed);
@@ -184,22 +192,67 @@ where T: SizedSample + FromSample<f32> {
     Ok(s)
 }
 
+/// Frames per render-ahead block.
+pub const BLOCK: usize = 512;
+
+/// The effect stage of the render-ahead thread: dry audio -> track chain, block by block. No device, so
+/// tests run exactly what playback runs.
+pub struct Feeder { pub d: Arc<Decoded>, chain: Chain, pub slots: Vec<Slot>, pub gains: Vec<Option<f32>>, pub pos: usize, pub total: usize, flushed: bool }
+impl Feeder {
+    pub fn new(d: Arc<Decoded>, slots: Vec<Slot>, gains: Vec<Option<f32>>, start: usize) -> Self {
+        let ch = d.channels.max(1); let total = d.samples.len() / ch;
+        let chain = Chain::new(&slots, &gains, ch, d.sample_rate, total, start.min(total));
+        Self { d, chain, slots, gains, pos: start.min(total), total, flushed: false }
+    }
+    pub fn finished(&self) -> bool { self.pos >= self.total && self.flushed }
+    /// Append the next processed block (or the chain's flushed tail at the end). False once everything is out.
+    pub fn next(&mut self, out: &mut Vec<f32>) -> bool {
+        if self.pos >= self.total {
+            if self.flushed { return false }
+            self.chain.flush(out); self.flushed = true; return true
+        }
+        let ch = self.d.channels.max(1); let n = BLOCK.min(self.total - self.pos);
+        self.chain.process(&self.d.samples[self.pos * ch..(self.pos + n) * ch], out); self.pos += n;
+        true
+    }
+    /// Live track-effect change: keep state where the effect type at a position is unchanged.
+    pub fn set_fx(&mut self, slots: Vec<Slot>, gains: Vec<Option<f32>>) {
+        self.chain.update(&slots, &gains, self.d.sample_rate, self.total, self.pos);
+        self.slots = slots; self.gains = gains;
+    }
+    pub fn set_gains(&mut self, gains: Vec<Option<f32>>) { self.chain.set_gains(&gains); self.gains = gains; }
+    /// Swap in a re-rendered dry buffer (e.g. a clip's effect stack changed) at the current position. The track
+    /// chain keeps its filter/envelope state, so there is no click and no restart. False if the format differs or
+    /// the stream has already been flushed (then the caller restarts playback instead).
+    pub fn swap_dry(&mut self, nd: Arc<Decoded>) -> bool {
+        if nd.channels != self.d.channels || nd.sample_rate != self.d.sample_rate || self.flushed { return false }
+        self.total = nd.samples.len() / nd.channels.max(1);
+        self.d = nd; self.pos = self.pos.min(self.total);
+        let (slots, gains) = (self.slots.clone(), self.gains.clone());
+        self.chain.update(&slots, &gains, self.d.sample_rate, self.total, self.pos); // refresh lengths (Fade), keep state
+        true
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-fn render_loop(req: PlayRequest, start_src: usize, total: usize, out_sr: u32, out_ch: usize, mut prod: rtrb::Producer<f32>, target: usize,
+fn render_loop(req: PlayRequest, start_src: usize, _total: usize, out_sr: u32, out_ch: usize, mut prod: rtrb::Producer<f32>, target: usize,
                ctl: Receiver<Ctl>, res_tx: Sender<Ctl>, stop: Arc<AtomicBool>, sh: Arc<PlayShared>) {
-    let d = req.dry;
-    let ch = d.channels.max(1);
-    let mut gains = req.gains;
-    let mut slots = req.slots;
-    let mut chain = Chain::new(&slots, &gains, ch, d.sample_rate, total, start_src);
-    let mut rs = Resampler::new(d.sample_rate, out_sr, ch, out_ch);
-    let mut pos = start_src;
+    let ch = req.dry.channels.max(1);
+    let src_rate = req.dry.sample_rate;
+    let mut feed = Feeder::new(req.dry, req.slots, req.gains, start_src);
+    let mut rs = Resampler::new(src_rate, out_sr, ch, out_ch);
     let (mut fxout, mut devout): (Vec<f32>, Vec<f32>) = (Vec::with_capacity(8192), Vec::with_capacity(8192));
     let mut pending: Vec<f32> = Vec::new(); // produced but not yet pushed
-    let mut flushed = false;
     let mut gen = 0u64;
     let gen_now = Arc::new(AtomicU64::new(0)); // lets a stale re-measure give up early
-    const BLOCK: usize = 512;
+    // re-measure whole-file stages (Normalize / Loudness) in the background
+    let remeasure = |gen: &mut u64, d: Arc<Decoded>, slots: Vec<Slot>| {
+        *gen += 1; gen_now.store(*gen, Relaxed);
+        let (tx, my, latest) = (res_tx.clone(), *gen, gen_now.clone());
+        std::thread::Builder::new().name("sw-fx-resolve".into()).spawn(move || {
+            if let Some(g) = fx::resolve_gains(&d, &slots, Some(&|| latest.load(Relaxed) != my)) { let _ = tx.send(Ctl::Gains(my, g)); }
+        }).ok();
+    };
     while !stop.load(Relaxed) {
         // control messages
         while let Ok(m) = ctl.try_recv() {
@@ -207,22 +260,20 @@ fn render_loop(req: PlayRequest, start_src: usize, total: usize, out_sr: u32, ou
                 Ctl::Fx(new) => {
                     // keep gains for unchanged global stages until the re-measure lands
                     let carried: Vec<Option<f32>> = new.iter().enumerate().map(|(i, s)| {
-                        slots.get(i).filter(|o| o.fx == s.fx && o.bypass == s.bypass).and_then(|_| gains.get(i).copied().flatten())
-                            .or_else(|| if s.fx.is_global() { gains.get(i).copied().flatten() } else { None })
+                        feed.slots.get(i).filter(|o| o.fx == s.fx && o.bypass == s.bypass).and_then(|_| feed.gains.get(i).copied().flatten())
+                            .or_else(|| if s.fx.is_global() { feed.gains.get(i).copied().flatten() } else { None })
                     }).collect();
-                    chain.update(&new, &carried, d.sample_rate, total, pos);
-                    gains = carried;
-                    let needs = new.iter().zip(&slots).any(|(a, b)| a != b) || new.len() != slots.len();
-                    slots = new;
-                    if needs && slots.iter().any(|s| !s.bypass && s.fx.is_global()) {
-                        gen += 1; gen_now.store(gen, Relaxed);
-                        let (d2, s2, tx, my, latest) = (d.clone(), slots.clone(), res_tx.clone(), gen, gen_now.clone());
-                        std::thread::Builder::new().name("sw-fx-resolve".into()).spawn(move || {
-                            if let Some(g) = fx::resolve_gains(&d2, &s2, Some(&|| latest.load(Relaxed) != my)) { let _ = tx.send(Ctl::Gains(my, g)); }
-                        }).ok();
-                    }
+                    let needs = new.iter().zip(&feed.slots).any(|(a, b)| a != b) || new.len() != feed.slots.len();
+                    feed.set_fx(new, carried);
+                    if needs && feed.slots.iter().any(|s| !s.bypass && s.fx.is_global()) { remeasure(&mut gen, feed.d.clone(), feed.slots.clone()) }
                 }
-                Ctl::Gains(g, v) => if g == gen && v.len() == slots.len() { chain.set_gains(&v); gains = v; },
+                Ctl::Gains(g, v) => if g == gen && v.len() == feed.slots.len() { feed.set_gains(v) },
+                Ctl::Dry(nd) => {
+                    if feed.swap_dry(nd) {
+                        sh.len.store((feed.total as f64 * out_sr as f64 / src_rate as f64) as u64, Relaxed);
+                        if feed.slots.iter().any(|s| !s.bypass && s.fx.is_global()) { remeasure(&mut gen, feed.d.clone(), feed.slots.clone()) }
+                    } else { log::warn!("playback: re-rendered audio could not be swapped in (format changed)") }
+                }
             }
         }
         // push leftovers first
@@ -233,17 +284,14 @@ fn render_loop(req: PlayRequest, start_src: usize, total: usize, out_sr: u32, ou
         }
         let queued = prod.buffer().capacity() - prod.slots();
         if queued >= target || sh.paused.load(Relaxed) { std::thread::sleep(Duration::from_millis(3)); continue }
-        if pos >= total {
-            if !flushed {
-                fxout.clear(); chain.flush(&mut fxout); devout.clear(); rs.process(&fxout, &mut devout); rs.flush(&mut devout);
-                pending.extend_from_slice(&devout); flushed = true; continue
-            }
+        if feed.finished() {
             if pending.is_empty() { sh.done.store(true, Relaxed) }
             std::thread::sleep(Duration::from_millis(5)); continue
         }
-        let n = BLOCK.min(total - pos);
-        fxout.clear(); chain.process(&d.samples[pos * ch..(pos + n) * ch], &mut fxout); pos += n;
+        let at_end = feed.pos >= feed.total;
+        fxout.clear(); feed.next(&mut fxout);
         devout.clear(); rs.process(&fxout, &mut devout);
+        if at_end { rs.flush(&mut devout) }
         pending.extend_from_slice(&devout);
     }
 }

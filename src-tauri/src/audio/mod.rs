@@ -32,6 +32,8 @@ pub enum Cmd {
     PlaySession(playback::PlayRequest),
     /// Live effect-chain change for the running session.
     UpdateFx(Vec<crate::fx::Slot>),
+    /// Re-rendered dry audio (clip effects changed) for the running session, swapped in at the current position.
+    UpdateDry(Arc<crate::waveform::Decoded>),
     PausePlay(bool),
     StopPlay,
     DevicesChanged(Vec<String>),
@@ -437,6 +439,7 @@ impl Engine {
                 Ok(Cmd::StopRecord) => { self.stop_record(); self.vt_recording = false; self.vt_below = None; if self.pending_backoff { self.pending_backoff = false; self.open_input(); } }
                 Ok(Cmd::PlaySession(req)) => self.play(req),
                 Ok(Cmd::UpdateFx(slots)) => { if let Some(s) = &self.output { s.update_fx(slots) } }
+                Ok(Cmd::UpdateDry(d)) => { if let Some(s) = &self.output { s.update_dry(d) } }
                 Ok(Cmd::PausePlay(p)) => { if self.output.is_some() { self.sh.play.paused.store(p, Relaxed) } }
                 Ok(Cmd::StopPlay) => { self.output = None; self.sh.play.playing.store(false, Relaxed); self.sh.play.paused.store(false, Relaxed); }
                 Ok(Cmd::DevicesChanged(ids)) => {
