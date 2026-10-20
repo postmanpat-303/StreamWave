@@ -164,7 +164,7 @@
 
 <style>
   .veil { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 130; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px; width: min(560px, 92vw); max-height: 86vh; display: flex; flex-direction: column; gap: 10px; }
+  .card { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 24px; width: min(560px, 92vw); max-height: 86vh; display: flex; flex-direction: column; gap: 10px; }
   h2 { margin: 0; font-size: 20px; }
   p { margin: 0; line-height: 1.5; }
   .muted { color: var(--muted); font-size: 13px; }

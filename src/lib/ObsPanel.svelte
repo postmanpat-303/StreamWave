@@ -56,7 +56,7 @@
   {#if error}<div class="err">{error}</div>{/if}
 </div>
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #555; margin-left: 6px; }
   .dot.on { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
   .wide { width: 100%; margin-top: 10px; }

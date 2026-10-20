@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Dropdown from "./ui/Dropdown.svelte";
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import { api, type ExportOptions, type FfmpegInfo } from "./api";
@@ -40,10 +41,9 @@
 <div class="panel">
   <div class="hdr"><h3>Export · {trackName}</h3><button class="x" onclick={onclose}>✕</button></div>
   {#if ff && !ff.found}<div class="warn">{ff.message}</div>{/if}
-  <label for="ef">Format</label>
-  <select id="ef" bind:value={fmt}>
+  <Dropdown caption="Format" id="ef" bind:value={fmt}>
     {#each FORMATS as x}<option value={x.id} disabled={x.ff && ff !== null && !ff.found}>{x.name}</option>{/each}
-  </select>
+  </Dropdown>
   <div class="row">
     <div><label for="er">Sample rate</label>
       <select id="er" bind:value={rate}><option value={null}>Same as source</option>{#each [8000, 16000, 22050, 32000, 44100, 48000, 96000] as r}<option value={r}>{r / 1000} kHz</option>{/each}</select></div>
@@ -73,11 +73,11 @@
   <div class="muted">Includes the track's edits and effects. Your original files aren't changed.</div>
 </div>
 <style>
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
   .hdr { display: flex; justify-content: space-between; align-items: center; } .hdr h3 { margin: 0; } .x { background: none; border: none; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .go { width: 100%; margin-top: 12px; background: var(--accent); color: #002; border-color: var(--accent); font-weight: 600; }
-  .warn { background: #ffb02018; border: 1px solid #ffb02066; border-radius: 8px; padding: 8px; font-size: 12px; margin: 8px 0; }
+  .warn { background: rgb(var(--warn-rgb) / 0.09); border: 1px solid rgb(var(--warn-rgb) / 0.40); border-radius: 8px; padding: 8px; font-size: 12px; margin: 8px 0; }
   .muted { color: var(--muted); font-size: 11px; margin-top: 6px; }
   details { margin-top: 10px; font-size: 13px; } summary { cursor: pointer; color: var(--muted); }
   input[type="range"] { padding: 0; accent-color: var(--accent); }

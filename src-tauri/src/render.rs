@@ -18,6 +18,35 @@ pub struct ClipSpec {
     #[serde(default)] pub gap: bool,
     /// The clip's own effect stack ("Layering Effects"), run before clip gain/fades.
     #[serde(default)] pub fx: Vec<crate::fx::Slot>,
+    /// Shape of this clip's own fade-in/out: None = raised cosine (S-curve, the pre-0.11 sound), "linear", "equal_power".
+    #[serde(default)] pub fade_curve: Option<String>,
+    /// Crossfade with the PREVIOUS clip (both audio), centred on the cut: the previous clip plays on into its source
+    /// beyond its end and this clip starts earlier from before its start ("handles"), so timeline positions stay put.
+    #[serde(default)] pub xfade_ms: Option<f64>,
+    /// "linear" (gains sum to 1) or "equal_power" (powers sum to 1; default).
+    #[serde(default)] pub xfade_curve: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Curve { SCurve, Linear, EqualPower }
+impl Curve {
+    fn parse(s: &Option<String>, default: Curve) -> Curve {
+        match s.as_deref() { Some("linear") => Curve::Linear, Some("equal_power") => Curve::EqualPower, Some("s_curve") => Curve::SCurve, _ => default }
+    }
+    /// Fade-in gain at x in [0, 1]; the matching fade-out is `gain(1 - x)`.
+    pub fn gain(self, x: f64) -> f64 {
+        let x = x.clamp(0.0, 1.0);
+        match self { Curve::SCurve => 0.5 * (1.0 - (std::f64::consts::PI * x).cos()), Curve::Linear => x, Curve::EqualPower => (x * std::f64::consts::FRAC_PI_2).sin() }
+    }
+    /// (fade-in, fade-out) gains for frame k of a 2h-frame crossfade. Linear sums to exactly 1, equal power to power 1.
+    pub fn xfade(self, k: usize, h2: usize) -> (f32, f32) {
+        let t = (k as f64 + 0.5) / h2 as f64;
+        match self {
+            Curve::Linear => (t as f32, (1.0 - t) as f32),
+            Curve::EqualPower => ((t * std::f64::consts::FRAC_PI_2).sin() as f32, (t * std::f64::consts::FRAC_PI_2).cos() as f32),
+            Curve::SCurve => { let a = self.gain(t); (a as f32, (1.0 - a) as f32) }
+        }
+    }
 }
 
 /// Decoded sources, most-recently-used first. Bounded so long sessions with many big files
@@ -49,60 +78,92 @@ impl DecodeCache {
 /// `fx::Chain` as track effects) -> clip gain and fades. Gaps are zeros. Clip *i* covers output frames
 /// `round(tl*rate) .. round((tl+len)*rate)` of the running timeline position `tl`, and every clip fills its
 /// frames exactly (zero-padded at a source's end), so positions are sample-exact however clips are arranged.
+///
+/// Crossfades (`xfade_ms` on the incoming clip): over the `2h` frames centred on the cut, the outgoing clip continues
+/// into its source tail and the incoming clip starts `h` frames early from its source head; the two are summed with
+/// complementary curves. `h` is clamped to the handles the sources really have and to half of either clip, so a
+/// crossfade can never read past a source or create a dip. Clips without crossfades render exactly as before.
 pub fn render(cache: &DecodeCache, clips: &[ClipSpec]) -> anyhow::Result<Decoded> {
     anyhow::ensure!(!clips.is_empty(), "nothing to render");
     let (rate, ch) = match clips.iter().find(|c| !c.gap) {
         Some(c) => { let d = cache.get(&c.src)?; (d.sample_rate, d.channels.max(1)) }
         None => (48000, 2), // only silence (e.g. a selection inside a gap)
     };
-    let mut out = Vec::new();
+    let r = rate as f64;
     // clip lengths are taken from the running timeline position, so splitting a clip anywhere
     // renders exactly the same samples as the unsplit clip (no dropped/doubled sample at the cut)
+    let mut g = Vec::with_capacity(clips.len() + 1); // first output frame of each clip, + the end
     let mut tl = 0.0f64;
+    for c in clips { g.push((tl * r).round() as usize); tl += (c.end - c.start).max(0.0); }
+    g.push((tl * r).round() as usize);
+    let total = g[clips.len()];
+    // crossfade half-lengths (output frames) at the head of each clip, clamped to the real handles
+    let mut hs = vec![0usize; clips.len()];
+    for i in 1..clips.len() {
+        let (p, c) = (&clips[i - 1], &clips[i]);
+        let want = c.xfade_ms.unwrap_or(0.0); if want <= 0.0 || c.gap || p.gap { continue }
+        let (dp, dc) = (cache.get(&p.src)?, cache.get(&c.src)?);
+        let tail = ((dp.samples.len() / dp.channels.max(1)) as f64 / dp.sample_rate as f64 - p.end).max(0.0); // seconds after p's end
+        let head = c.start.max(0.0);                                                                         // seconds before c's start
+        let h = ((want / 2000.0) * r).round().min((tail * r).floor()).min((head * r).floor()) as usize;
+        hs[i] = h.min((g[i + 1] - g[i]) / 2).min((g[i] - g[i - 1]) / 2);
+    }
+    let mut out = vec![0.0f32; total * ch];
     let mut seg: Vec<f32> = Vec::new();
-    for c in clips {
+    let mut tl = 0.0f64;
+    for (ci, c) in clips.iter().enumerate() {
         let len = (c.end - c.start).max(0.0);
-        let g0 = (tl * rate as f64).round();
-        let n = ((tl + len) * rate as f64).round() as usize - g0 as usize;
-        if c.gap { tl += len; out.resize(out.len() + n * ch, 0.0); continue }
+        let g0 = (tl * r).round();
+        let n = g[ci + 1] - g[ci];
+        let (hin, hout) = (hs[ci], hs.get(ci + 1).copied().unwrap_or(0));
+        if c.gap { tl += len; continue }
         let d = cache.get(&c.src)?;
         let frames = d.samples.len() / d.channels;
-        let ratio = d.sample_rate as f64 / rate as f64;
+        let ratio = d.sample_rate as f64 / r;
         // output frame g reads source position start + (g - tl*rate) * ratio, same as without the cut
-        let s0 = c.start * d.sample_rate as f64 + (g0 - tl * rate as f64) * ratio;
+        let s0 = c.start * d.sample_rate as f64 + (g0 - tl * r) * ratio;
         tl += len;
-        seg.clear();
-        for f in 0..n {
-            let pos = s0 + f as f64 * ratio;
-            let i = pos as usize;
+        let m = hin + n + hout;
+        seg.clear(); seg.resize(m * ch, 0.0); // a clip always fills its slot (+ handles) exactly; zeros past the source
+        for f in 0..m {
+            let pos = s0 + (f as f64 - hin as f64) * ratio;
+            if pos <= -1.0 { continue } // before the source (only in a head handle); (-1, 0) reads frame 0 as before
+            let i = pos as usize; // saturates to 0 for -1 < pos < 0, exactly like the pre-crossfade renderer
             if i >= frames || frames == 0 { break }
             let j = (i + 1).min(frames - 1); let t = (pos - i as f64) as f32;
             for k in 0..ch {
                 let sc = k % d.channels;
                 let a = d.samples[i * d.channels + sc]; let b = d.samples[j * d.channels + sc];
-                seg.push(a + (b - a) * t);
+                seg[f * ch + k] = a + (b - a) * t;
             }
         }
-        seg.resize(n * ch, 0.0); // a clip always fills its slot exactly
         // 1) the clip's own effects (Layering Effects): the same streaming chain as track effects
         if c.fx.iter().any(|s| !s.bypass) {
             let mut sd = Decoded { samples: std::mem::take(&mut seg), channels: ch, sample_rate: rate };
             crate::fx::process_chain(&mut sd, &c.fx);
             seg = sd.samples;
         }
-        // 2) per-clip gain + raised-cosine fades
+        // 2) per-clip gain + fades (own fades on edges without a crossfade) + crossfade curves on the handles
         let gain = c.gain_db.map(|db| 10f64.powf(db / 20.0) as f32).unwrap_or(1.0);
-        let fi = c.fade_in_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
-        let fo = c.fade_out_ms.map(|ms| ((ms.max(0.0) / 1000.0) * rate as f64).round() as usize);
-        if gain != 1.0 || fi.is_some_and(|x| x > 0) || fo.is_some_and(|x| x > 0) {
+        let fi = if hin > 0 { None } else { c.fade_in_ms.map(|ms| ((ms.max(0.0) / 1000.0) * r).round() as usize) };
+        let fo = if hout > 0 { None } else { c.fade_out_ms.map(|ms| ((ms.max(0.0) / 1000.0) * r).round() as usize) };
+        let fc = Curve::parse(&c.fade_curve, Curve::SCurve);
+        let xin = Curve::parse(&c.xfade_curve, Curve::EqualPower);
+        let xout = clips.get(ci + 1).map(|x| Curve::parse(&x.xfade_curve, Curve::EqualPower)).unwrap_or(Curve::EqualPower);
+        if gain != 1.0 || fi.is_some_and(|x| x > 0) || fo.is_some_and(|x| x > 0) || hin > 0 || hout > 0 {
             for (f, fr) in seg.chunks_mut(ch).enumerate() {
-                let mut g = gain;
-                if let Some(fi) = fi { if fi > 0 && f < fi { g *= (0.5 * (1.0 - (std::f64::consts::PI * f as f64 / fi as f64).cos())) as f32 } }
-                if let Some(fo) = fo { if fo > 0 && f + fo >= n { let k = n - 1 - f; g *= (0.5 * (1.0 - (std::f64::consts::PI * k as f64 / fo as f64).cos())) as f32 } }
-                fr.iter_mut().for_each(|v| *v *= g);
+                let mut gg = gain;
+                if hin > 0 && f < 2 * hin { gg *= xin.xfade(f, 2 * hin).0 }
+                if hout > 0 && f >= hin + n - hout { gg *= xout.xfade(f - (hin + n - hout), 2 * hout).1 }
+                let fc_core = f.wrapping_sub(hin); // frame index inside the clip itself
+                if let Some(fi) = fi { if fi > 0 && fc_core < fi { gg *= fc.gain(fc_core as f64 / fi as f64) as f32 } }
+                if let Some(fo) = fo { if fo > 0 && fc_core < n && fc_core + fo >= n { let k = n - 1 - fc_core; gg *= fc.gain(k as f64 / fo as f64) as f32 } }
+                fr.iter_mut().for_each(|v| *v *= gg);
             }
         }
-        out.extend_from_slice(&seg);
+        // 3) overlap-add at the clip's position (handles reach into the neighbours' slots)
+        let at = (g[ci] - hin) * ch;
+        for (o, v) in out[at..at + seg.len()].iter_mut().zip(&seg) { *o += *v }
     }
     Ok(Decoded { samples: out, channels: ch, sample_rate: rate })
 }
@@ -318,5 +379,100 @@ mod tests {
         assert!(f.swap_dry(Arc::new(Decoded { samples: vec![0.2; 9600], channels: 2, sample_rate: 48000 })));
         assert_eq!(f.total, 4800);
         o.clear(); f.next(&mut o); assert!(o.iter().all(|v| *v == 0.2)); // new audio from the current position on
+    }
+
+    fn xf(mut c: ClipSpec, ms: f64, curve: &str) -> ClipSpec { c.xfade_ms = Some(ms); c.xfade_curve = Some(curve.into()); c }
+
+    /// Curves: linear gains sum to exactly 1, equal-power gains to power 1; both monotonic and symmetric.
+    #[test] fn crossfade_curves_are_complementary() {
+        for h2 in [2usize, 3, 96, 4801] {
+            let mut last = (-1f32, 2f32);
+            for k in 0..h2 {
+                let (a, b) = Curve::Linear.xfade(k, h2); assert!((a + b - 1.0).abs() < 1e-6, "linear {k}/{h2}");
+                let (p, q) = Curve::EqualPower.xfade(k, h2); assert!((p * p + q * q - 1.0).abs() < 1e-5, "power {k}/{h2}");
+                assert!(p > last.0 && q < last.1); last = (p, q);
+                let (pm, qm) = Curve::EqualPower.xfade(h2 - 1 - k, h2); assert!((p - qm).abs() < 1e-6 && (q - pm).abs() < 1e-6, "symmetric");
+            }
+        }
+    }
+    /// Two different sources: inside the crossfade the output is exactly out·A + in·B, outside it is untouched,
+    /// the timeline length and every position stay the same, and the crossfade is centred on the cut.
+    #[test] fn crossfade_mixes_exactly_and_keeps_positions() {
+        let d = tmp("xf"); let cache = DecodeCache::default();
+        let a = wav(&d, "a.wav", 1000, 1, 2000, |_| 1.0);
+        let b = wav(&d, "b.wav", 1000, 1, 2000, |_| 0.5);
+        let plain = render(&cache, &[clip(&a, 0.5, 1.0), clip(&b, 0.5, 1.0)]).unwrap();
+        for curve in ["linear", "equal_power"] {
+            let out = render(&cache, &[clip(&a, 0.5, 1.0), xf(clip(&b, 0.5, 1.0), 100.0, curve)]).unwrap();
+            assert_eq!(out.samples.len(), plain.samples.len(), "{curve}: length changed");
+            let c = if curve == "linear" { Curve::Linear } else { Curve::EqualPower };
+            for f in 0..1000 {
+                let want = if (450..550).contains(&f) { let (gi, go) = c.xfade(f - 450, 100); go * 1.0 + gi * 0.5 } else { plain.samples[f] };
+                assert!((out.samples[f] - want).abs() < 1e-6, "{curve} frame {f}: {} vs {want}", out.samples[f]);
+            }
+        }
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// Crossfading across a cut in continuous material (a split clip) reproduces the uncut audio: no gap, no click.
+    #[test] fn crossfade_over_a_cut_in_continuous_audio_is_seamless() {
+        let d = tmp("xs"); let cache = DecodeCache::default();
+        let src = wav(&d, "s.wav", 48000, 2, 96000, |i| 0.4 * (i as f32 * 0.013).sin() + 0.2 * (i as f32 * 0.0021).cos());
+        let whole = render(&cache, &[clip(&src, 0.2, 1.8)]).unwrap();
+        let out = render(&cache, &[clip(&src, 0.2, 0.9), xf(clip(&src, 0.9, 1.8), 80.0, "linear")]).unwrap();
+        assert_eq!(out.samples.len(), whole.samples.len());
+        let diff = out.samples.iter().zip(&whole.samples).fold(0f32, |m, (x, y)| m.max((x - y).abs()));
+        assert!(diff < 1e-5, "linear crossfade of continuous audio differs by {diff}");
+        // largest sample-to-sample step around the joint is no bigger than in the original signal (no click)
+        let step = |v: &[f32], a: usize, b: usize| (a..b).map(|f| (v[(f + 1) * 2] - v[f * 2]).abs()).fold(0f32, f32::max);
+        let cut = (0.7 * 48000.0) as usize;
+        assert!(step(&out.samples, cut - 3000, cut + 3000) <= step(&whole.samples, cut - 3000, cut + 3000) + 1e-5);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// Without spare source audio the crossfade shrinks to what exists (here: none) instead of reading past a file.
+    #[test] fn crossfade_is_clamped_to_real_handles() {
+        let d = tmp("xc"); let cache = DecodeCache::default();
+        let a = wav(&d, "a.wav", 1000, 1, 1000, |_| 1.0); // 1 s: a clip ending at 1.0 has no tail
+        let b = wav(&d, "b.wav", 1000, 1, 1000, |_| 0.5);
+        let none = render(&cache, &[clip(&a, 0.5, 1.0), clip(&b, 0.0, 0.5)]).unwrap();
+        let want = render(&cache, &[clip(&a, 0.5, 1.0), xf(clip(&b, 0.0, 0.5), 200.0, "linear")]).unwrap();
+        assert_eq!(none.samples, want.samples);
+        // 40 ms of tail and head available -> a 40 ms (not 200 ms) crossfade
+        let c = render(&cache, &[clip(&a, 0.5, 0.98), xf(clip(&b, 0.02, 0.5), 200.0, "linear")]).unwrap();
+        assert_eq!(c.samples[479 - 21], 1.0); assert_eq!(c.samples[480 + 20], 0.5);
+        assert!(c.samples[470] < 1.0 && c.samples[470] > 0.5);
+        // a crossfade after a gap or on the first clip is ignored
+        let g = render(&cache, &[gap(0.1), xf(clip(&b, 0.2, 0.5), 100.0, "linear")]).unwrap();
+        assert_eq!(g.samples, render(&cache, &[gap(0.1), clip(&b, 0.2, 0.5)]).unwrap().samples);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// Clip fades keep the old S-curve by default; "linear" / "equal_power" change only the shape.
+    #[test] fn fade_curves() {
+        let d = tmp("fc"); let cache = DecodeCache::default();
+        let a = wav(&d, "a.wav", 1000, 1, 1000, |_| 1.0);
+        let mut c = clip(&a, 0.0, 1.0); c.fade_in_ms = Some(100.0);
+        let s = render(&cache, &[c.clone()]).unwrap();
+        assert!((s.samples[25] - 0.5 * (1.0 - (std::f32::consts::PI * 0.25).cos())).abs() < 1e-6);
+        c.fade_curve = Some("linear".into()); assert!((render(&cache, &[c.clone()]).unwrap().samples[25] - 0.25).abs() < 1e-6);
+        c.fade_curve = Some("equal_power".into()); assert!((render(&cache, &[c]).unwrap().samples[25] - (std::f32::consts::FRAC_PI_2 * 0.25).sin()).abs() < 1e-6);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+    /// A project with crossfades plays exactly as it exports (same renderer, then the track chain).
+    #[test] fn crossfades_play_like_they_export() {
+        use crate::audio::playback::Feeder; use crate::fx::Effect;
+        let d = tmp("xpe"); let cache = DecodeCache::default();
+        let a = wav(&d, "a.wav", 48000, 2, 96000, |i| 0.3 * (i as f32 * 0.02).sin());
+        let b = wav(&d, "b.wav", 48000, 2, 96000, |i| 0.25 * (i as f32 * 0.035).cos());
+        let mut c1 = clip(&a, 0.3, 1.1); c1.fx = vec![slot(Effect::Gain { db: -3.0 })]; c1.fade_in_ms = Some(20.0);
+        let c2 = xf(clip(&b, 0.4, 1.2), 250.0, "equal_power");
+        let c3 = xf(clip(&a, 1.3, 1.7), 120.0, "linear");
+        let clips = vec![gap(0.05), c1, c2, c3];
+        let fx = vec![slot(Effect::Compressor { threshold_db: -18.0, ratio: 3.0, attack_ms: 5.0, release_ms: 60.0, makeup_db: 2.0 })];
+        let mut exported = render(&cache, &clips).unwrap(); crate::fx::process_chain(&mut exported, &fx);
+        let dry = Arc::new(render(&cache, &clips).unwrap());
+        let gains = crate::fx::resolve_gains(&dry, &fx, None).unwrap();
+        let mut f = Feeder::new(dry.clone(), fx.clone(), gains, 0); let mut out = vec![]; while f.next(&mut out) {}
+        assert!(out == exported.samples, "playback differs from export with crossfades");
+        assert_eq!(dry.samples.len(), ((0.05f64 + 0.8 + 0.8 + 0.4) * 48000.0).round() as usize * 2);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

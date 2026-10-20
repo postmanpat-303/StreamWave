@@ -2,6 +2,48 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.11.0 (2026-10-20)
+
+### New look
+- **Hardware-style design**: dark brushed panels with screws, knurled rotary knobs with an orange tick ring, LED level meters, pill buttons, captioned dropdowns and LED on/off toggles. Labels are uppercase and the accent colour is amber. The app stays dark and keeps the whale logo, every shortcut and every setting.
+- **Knobs everywhere you shape sound**: the effects rack, Layering Effects and the effect dialogs use knobs instead of sliders. Drag up/right (or scroll, or use the arrow keys) to turn, hold **Shift** for fine steps, double-click or press Delete to reset. Each knob shows its value and range; bipolar ones (EQ gains) light up from the centre. Each change is still one undo step.
+- **Colour per effect**: every effect type has its own colour (EQ blue, gate violet, compressor pink, loudness amber, limiter orange…), used in the rack, the layer list and the new workspace.
+- **Meters**: the input meter is an LED row with a dB scale, plus a vertical level meter. The timecode uses an LED-style display, and the record button sits in a bezel.
+
+### Timeline ruler
+- A **time ruler** above the tracks scrolls with them and adapts its steps to the zoom level (m:ss, or h:mm:ss on long projects). It shows the playhead, cursor, selection and markers.
+- **Click or drag on the ruler** to move the cursor (it seeks while playing). With the ruler focused, ←/→ step (Shift = bigger steps), Home/End jump to the start/end.
+
+### Selected-audio preview
+- A **preview strip** under the recorder shows the whole active track, the selection, the playhead and the part of the timeline currently in view, with LEN / START / END / SEL readouts.
+- Click to move the cursor, drag to select. **Zoom to selection** makes the selection fill the timeline; **Fit** shows everything.
+
+### Effects Layer workspace
+- A **Settings | Effects Layer** switch in the header. **Effects Layer** replaces the side panel with a large effects editor; **Settings** brings the classic panel back exactly as it was. Switching never touches the project or playback.
+- **Left effects list**: the active track's effects and the layers of the clip under the cursor, in processing order. Click one to edit it. The list collapses to a narrow strip (« / ») and does so automatically on small windows.
+- A **signal-flow strip** shows the full order: clip layers → clip gain/fades → track effects → mix.
+- The selected effect opens as a **colour-coded module** with big knobs, an on/off LED, run earlier/later and remove. Add track effects or clip layers, and use the track presets, from the same place.
+- Turning a track-effect knob is heard live while playing. It is the same data as the rack and the ◧ panel, so nothing is applied twice.
+
+### Fades and crossfades
+- **Fade handles**: drag the small square at a clip's top-left or top-right corner to set its fade-in or fade-out. The fade's shape is drawn over the waveform.
+- **Crossfades between neighbouring clips**: drag the small ⨯ handle at the bottom of a cut outwards, or click it for a small panel with a **Length** knob, the **Curve** (Equal power for different material, Linear for the same material or room tone) and **Remove crossfade**.
+- A crossfade is centred on the cut and uses the audio just beyond each clip's edge, so nothing on the timeline moves. When there is no spare audio there (two whole files back to back), the clips are made to overlap by the missing amount: later audio moves earlier, and StreamWave tells you so.
+- Playback, the mix and export all use the same render code, and a test checks that a crossfade plays exactly as it exports. Split, join, undo/redo, save and reopen keep crossfades. A cut or move that changes which clip a crossfade fades from removes it.
+
+### Projects
+- Projects that use crossfades or non-default fade shapes are saved as `.twt` **format version 3**. StreamWave 0.10 and older refuse them with "made by a newer StreamWave" instead of opening them wrongly. Projects without them still save as version 1 or 2, and every older `.twt` still opens and sounds the same.
+
+### Fixes
+- The crossfade handle sits above the overlay scrollbar used on Linux, so clicking it on a zoomed timeline no longer scrolls the view.
+
+### Limits (honest list)
+- Crossfades only work between **neighbouring clips on one track**; there is no free stacking of three or more clips.
+- There is no master/output effect bus: the mix is the sum of the tracks after their effects.
+- The ruler shows time only. There is no bars/beats ruler because projects have no tempo.
+- Normalize and Loudness *clip layers* on a crossfaded clip measure the clip including the extra audio used by the crossfade.
+- Playing a selection that starts inside a crossfade plays the incoming clip without the first part of the fade.
+
 ## 0.10.0 (2026-10-20)
 
 ### Importing several files at once

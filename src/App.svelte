@@ -5,6 +5,11 @@
   import { readText } from "@tauri-apps/plugin-clipboard-manager";
   import * as E from "./lib/editModel";
   import Meter from "./lib/Meter.svelte";
+  import Dropdown from "./lib/ui/Dropdown.svelte";
+  import Ruler from "./lib/ui/Ruler.svelte";
+  import Preview from "./lib/ui/Preview.svelte";
+  import Knob from "./lib/ui/Knob.svelte";
+  import EffectsWorkspace from "./lib/EffectsWorkspace.svelte";
   import Onboarding from "./lib/Onboarding.svelte";
   import About from "./lib/About.svelte";
   import UpdateDialog from "./lib/UpdateDialog.svelte";
@@ -195,7 +200,29 @@
   const clipName = (c: E.Clip) => sources.get(c.src)?.name ?? c.src.split(/[\\/]/).pop() ?? "clip";
   /** Render rate of a track (its first audio clip's source); null for an empty track. */
   function trackRate(t: E.EditTrack): number | null { const c = t.clips.find((x) => !x.gap); return c ? sources.get(c.src)?.sampleRate ?? null : null; }
-  const laneClips = (t: E.EditTrack) => E.audioClips(t).map((q) => ({ a: q.a, b: q.b, index: q.index, name: clipName(q.clip), fx: (q.clip.fx ?? []).filter((f) => !f.bypass).length }));
+  const srcDur = (src: string) => sources.get(src)?.duration;
+  const laneClips = (t: E.EditTrack) => E.audioClips(t).map((q) => ({ a: q.a, b: q.b, index: q.index, name: clipName(q.clip), fx: (q.clip.fx ?? []).filter((f) => !f.bypass).length,
+    fi: (q.clip.fade_in_ms ?? 0) / 1000, fo: (q.clip.fade_out_ms ?? 0) / 1000, fcurve: q.clip.fade_curve,
+    canX: E.canCrossfade(t, q.index), xf: E.xfadeLen(t, q.index, srcDur), xcurve: q.clip.xfade_curve, xo: E.xfadeLen(t, q.index + 1, srcDur) }));
+  // ---- fades & crossfades from the lane handles (one undo step each; audio updates in place while playing) ----
+  function laneFade(t: E.EditTrack, index: number, edge: "in" | "out", ms: number) {
+    commit(edge === "in" ? `Fade-in ${ms} ms` : `Fade-out ${ms} ms`, E.setClipFade(hist.present, t.id, index, edge, ms)); liveDry();
+  }
+  let xfMenu = $state<{ trackId: number; index: number; x: number; y: number } | null>(null);
+  function laneXfade(trackId: number, index: number, ms: number, curve?: E.XfadeCurve) {
+    const t = hist.present.tracks.find((x) => x.id === trackId); if (!t) return;
+    const r = E.setCrossfade(hist.present, trackId, index, ms, curve ?? t.clips[index]?.xfade_curve ?? "equal_power", srcDur);
+    if (!r) { toast("A crossfade needs two neighbouring clips (no silence between them)", "warn"); return; }
+    commit(r.ms ? `Crossfade ${r.ms} ms` : "Remove crossfade", r.project);
+    if (r.trimmed > 0.0005) { toast(`No spare audio at that cut: the clips now overlap by ${r.ms} ms (later audio moved ${(r.trimmed * 1000).toFixed(0)} ms earlier)`); restartIfPlaying(); }
+    else liveDry();
+  }
+  const xfClip = $derived.by(() => {
+    if (!xfMenu) return null; const t = project.tracks.find((x) => x.id === xfMenu!.trackId); const c = t?.clips[xfMenu.index];
+    if (!t || !c || !E.canCrossfade(t, xfMenu.index)) return null;
+    const p = t.clips[xfMenu.index - 1], tail = Math.max(0, (srcDur(p.src) ?? p.end) - p.end);
+    return { t, c, ms: E.xfadeLen(t, xfMenu.index, srcDur), max: Math.round(Math.min(5000, 1000 * Math.min(E.clipLen(c), E.clipLen(p)))), handles: Math.round(2000 * Math.min(tail, c.start)) };
+  });
   function scrollEl(id: number) { return document.querySelector<HTMLElement>(`[data-tid="${id}"] .scroll`); }
   /** px per second on the shared timeline (all lanes use the same scale). */
   function pps(id: number) { const el = scrollEl(id); return el ? (el.clientWidth * zoom) / timelineLen : 1; }
@@ -263,7 +290,25 @@
   function syncScroll(e: Event) {
     const x = (e.currentTarget as HTMLElement).scrollLeft;
     for (const el of document.querySelectorAll<HTMLElement>(".tracks .scroll")) if (el !== e.currentTarget && el.scrollLeft !== x) el.scrollLeft = x;
+    updateViewWin();
   }
+  // ---- the part of the timeline the lanes currently show (for the preview's viewport box) + zoom to selection ----
+  let viewWin = $state<{ a: number; b: number } | null>(null);
+  function updateViewWin() {
+    const el = document.querySelector<HTMLElement>(".tracks .lane .scroll"); if (!el || !timelineLen) { viewWin = null; return; }
+    const px = (el.clientWidth * zoom) / timelineLen; if (!px) return;
+    viewWin = { a: el.scrollLeft / px, b: (el.scrollLeft + el.clientWidth) / px };
+  }
+  $effect(() => { void zoom; void timelineLen; void project.tracks.length; requestAnimationFrame(updateViewWin); });
+  async function zoomTo(a: number, b: number) {
+    if (!(b > a) || !timelineLen) return;
+    setZoom((timelineLen / (b - a)) * 0.9); await tick();
+    const el = document.querySelector<HTMLElement>(".tracks .lane .scroll"); if (!el) return;
+    const px = (el.clientWidth * zoom) / timelineLen, x = Math.max(0, a * px - el.clientWidth * 0.05);
+    for (const s of document.querySelectorAll<HTMLElement>(".tracks .scroll")) s.scrollLeft = x;
+    updateViewWin();
+  }
+  const previewTrack = $derived.by(() => { const t = activeTrack(); return t && !E.isLabelTrack(t) && t.clips.some((c) => !c.gap) ? t : null; });
 
   // ---- label tracks ----
   let focusLabel = $state<number | null>(null);
@@ -762,6 +807,24 @@
     const t = activeTrack(); if (!t) return;
     commit(label, E.setFx(hist.present, t.id, fx)); lufs = null; liveFx();
   }
+  // ---- workspaces: Settings (the classic right column) | Effects Layer. Pure view state; playback and project are untouched. ----
+  let workspace = $state<"settings" | "fx">("settings");
+  /** Clip under the edit cursor on the active track (its layers show in the Effects Layer workspace). */
+  const cursorClip = $derived.by(() => {
+    const t = activeTrack(); if (!t || E.isLabelTrack(t) || selection?.trackId !== t.id) return null;
+    const at = selection.a, qs = E.audioClips(t);
+    const q = qs.find((x) => at >= x.a && at < x.b) ?? (qs.length && Math.abs(at - qs[qs.length - 1].b) < 1e-6 ? qs[qs.length - 1] : undefined);
+    return q ? { t, q } : null;
+  });
+  function changeCursorClipFx(fx: FxSlot[], label: string) {
+    const c = cursorClip; if (!c) return;
+    commit(label, E.setClipFx(hist.present, c.t.id, c.q.index, fx)); liveDry();
+  }
+  /** Knob being dragged on a track effect: push the draft chain into the running playback only (history on release). */
+  function liveTrackDraft(chain: FxSlot[]) {
+    const t = activeTrack(); if (!t || !level.playing || playingId !== t.id) return;
+    api.updateFx(ab ? [] : activeChain(chain)).catch((e) => toast(String(e), "err"));
+  }
   async function learnNoise(slotId: number) {
     const t = activeTrack(); if (!t || !selection || !hasRange()) return;
     try {
@@ -813,6 +876,17 @@
       if (!segments.length) toast("No speech recognized in the first source file of this track", "warn");
     } catch (e) { toast(`Transcription failed: ${e}`, "err"); }
     transcribing = false;
+  }
+  /** Timeline position being played (timeline seconds), or null when nothing plays. */
+  const playhead = $derived(level.playing && playingId !== null ? playOffset + level.play_secs : null);
+  /** Ruler click/drag: move the edit cursor; when a whole track is playing, continue playback from there on release. */
+  async function rulerSeek(at: number, final: boolean) {
+    const t = activeTrack(); if (!t) return;
+    selection = { trackId: t.id, a: at, b: at };
+    if (!final || !level.playing || playingId === null || playingId < 0 || playRange) return;
+    const pt = project.tracks.find((x) => x.id === playingId); if (!pt || !pt.clips.length) return;
+    await api.stopPlayback(); playingId = pt.id; playOffset = 0; playRange = null;
+    try { await api.playClips(clipsFor(pt.clips), fxFor(pt), Math.min(at, E.trackLen(pt))); } catch (e) { toast(String(e), "err"); }
   }
   async function seekSeg(s: { start: number }) {
     const t = activeTrack(); if (!t || !t.clips.length) return;
@@ -1003,6 +1077,26 @@
     onclose={() => (fxDialog = null)} />
 {/if}
 {#if importAsk}<ImportArrangeDialog files={importAsk.files} playhead={importAsk.playhead} onimport={importArranged} oncancel={() => { importAsk = null; toast("Import cancelled"); }} />{/if}
+  {#if xfMenu && xfClip}
+    {@const xm = xfMenu}
+    <!-- closes on pointerdown (not click): the click that follows the handle's pointerup must not close it again -->
+    <div class="xfveil" role="presentation" onpointerdown={() => (xfMenu = null)} oncontextmenu={(e) => { e.preventDefault(); xfMenu = null; }}></div>
+    <div class="xfpop hw" role="dialog" aria-label="Crossfade" tabindex="-1" style="left:{Math.min(xm.x, innerWidth - 300)}px;top:{Math.min(xm.y + 12, innerHeight - 260)}px"
+      onkeydown={(e) => { if (e.key === "Escape") { e.stopPropagation(); xfMenu = null; } }}>
+      <h3>Crossfade</h3>
+      <div class="xfrow">
+        <Knob label="Length" unit="ms" min={0} max={xfClip.max} step={10} value={xfClip.ms} def={Math.min(300, xfClip.max)} size={64} scale="ends"
+          onchange={(v) => laneXfade(xm.trackId, xm.index, v)} />
+        <div class="xfside">
+          <Dropdown caption="Curve" value={xfClip.c.xfade_curve ?? "equal_power"} onchange={(e) => laneXfade(xm.trackId, xm.index, xfClip.ms || Math.min(300, xfClip.max), e.currentTarget.value as E.XfadeCurve)}>
+            <option value="equal_power" title="Best between different material: keeps the loudness steady">Equal power</option><option value="linear" title="Best between takes of the same material or room tone">Linear</option>
+          </Dropdown>
+          <div class="small">{xfClip.handles >= (xfClip.ms || 1) ? "Uses spare audio around the cut: nothing moves." : `Spare audio for ${xfClip.handles} ms; longer crossfades overlap the clips and move later audio earlier.`}</div>
+          <button class="pill small" disabled={!xfClip.ms} onclick={() => { laneXfade(xm.trackId, xm.index, 0); xfMenu = null; }}>Remove crossfade</button>
+        </div>
+      </div>
+    </div>
+  {/if}
 {#if layerClip}
   <LayerFxPanel clip={layerClip.q.clip} clipName={clipName(layerClip.q.clip)} trackName={layerClip.t.name} at={layerClip.q.a} onchange={changeLayers} onclose={() => (layerFor = null)} />
 {/if}
@@ -1038,25 +1132,29 @@
 <div class="app">
   <header>
     <div class="brand"><img class="logo" src={logoUrl} alt="" width="22" height="22" /> Stream<b>Wave</b> <span class="proj">· {projName}{dirty ? " •" : ""}</span></div>
+    <div class="wsw" role="tablist" aria-label="Workspace">
+      <button role="tab" aria-selected={workspace === "settings"} onclick={() => (workspace = "settings")} title="Settings panel: selection, Studio Sound, transcript, effects rack, OBS">Settings</button>
+      <button role="tab" aria-selected={workspace === "fx"} onclick={() => (workspace = "fx")} title="Effects Layer workspace: every effect of the track and the clip under the cursor, with knobs">Effects Layer</button>
+    </div>
     <select class="recent" value="" onchange={(e) => { const v = e.currentTarget.value; e.currentTarget.value = ""; e.currentTarget.blur(); if (v === "__open") openProject(); else if (v === "__new") newProject(); else if (v) openProject(v); }} title="Projects">
       <option value="">📁 Project</option><option value="__new">New project (Ctrl+N)</option><option value="__open">Open... (Ctrl+O)</option>
       {#each recentProjects as r}<option value={r}>{r.split(/[\\/]/).pop()}</option>{/each}
     </select>
     <button onclick={() => saveProject(false)} title="Save (Ctrl+S)">💾</button>
     <div class="devsel">
-      <select value={engine?.input_id ?? settings.input_device ?? ""} onchange={(e) => { setInput(e.currentTarget.value); e.currentTarget.blur(); }} title="Microphone">
+      <Dropdown caption="Input device" value={engine?.input_id ?? settings.input_device ?? ""} onchange={(e) => { setInput(e.currentTarget.value); e.currentTarget.blur(); }} title="Microphone">
         {#each inputs as d}<option value={d.id}>🎙 {d.friendly_name}{d.is_default ? " (default)" : ""}</option>{/each}
-      </select>
+      </Dropdown>
     </div>
     <button onclick={() => run("undo")} disabled={!canUndo} title="Undo (Ctrl+Z)">↶</button>
     <button onclick={() => run("redo")} disabled={!canRedo} title="Redo (Ctrl+Y)">↷</button>
     <button onclick={importFile}>＋ Import</button>
     <button onclick={() => run("export")} disabled={!project.tracks.length} title="Export (Ctrl+E)">⇩ Export</button>
     <button onclick={batchExport} disabled={!project.tracks.length || batchBusy} title="Export every track as WAV at the loudness target set in Settings">⇩⇩ Batch</button>
-    <button onclick={() => (showSettings = !showSettings)}>⚙ Settings</button>
+    <button onclick={() => { if (workspace !== "settings") { workspace = "settings"; showSettings = true; } else showSettings = !showSettings; }}>⚙ Settings</button>
   </header>
 
-  <main>
+  <main class:fxws={workspace === "fx"}>
     <section class="left">
       <div class="recpanel">
         <button class="bigrec" class:on={recording} onclick={toggleRecord} title="Record (R)">
@@ -1074,12 +1172,29 @@
         </div>
       </div>
 
+      {#if previewTrack}
+        {@const pt = previewTrack}
+        {@const psel = selection?.trackId === pt.id ? selection : null}
+        <Preview name={pt.name} peaks={E.trackPeaks(pt, sources, 900)} duration={E.trackLen(pt)}
+          selection={psel ? { a: psel.a, b: psel.b } : null} cursor={psel?.a ?? null}
+          playhead={playingId === pt.id || playingId === -1 ? playhead : null} view={viewWin} zoomed={zoom > 1.001}
+          color={pt.kind === "obs" ? "#9b74ff" : pt.kind === "recovered" ? "#ffd04a" : "#2ec4b6"}
+          onseek={(at) => { selection = { trackId: pt.id, a: at, b: at }; rulerSeek(at, true); }}
+          onselect={(a, b) => (selection = { trackId: pt.id, a, b })}
+          onzoomsel={() => { if (psel) zoomTo(psel.a, psel.b); }} onfit={() => setZoom(1)} />
+      {/if}
+
       <div class="tracks" role="region" aria-label="Tracks" oncontextmenu={openEmptyMenu} onwheel={(e) => { if (e.ctrlKey) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.25 : 0.8)); } }}>
         {#if project.tracks.length}
           <div class="mixbar">
             <button class="small" onclick={playMix} title="Render every track with its effects and play the combined mix">▶ Mix all {project.tracks.length} track{project.tracks.length > 1 ? "s" : ""}</button>
             {#if playingId === -1 && level.playing}<button class="small" onclick={() => run("stop")}>■ Stop mix</button>{/if}
           </div>
+        {/if}
+        {#if project.tracks.length}
+          <Ruler duration={timelineLen} {zoom} {playhead} cursor={selection?.a ?? null}
+            selection={selection && selection.b - selection.a > 0.0005 ? selection : null} markers={project.markers ?? []}
+            onscroll={syncScroll} onseek={rulerSeek} />
         {/if}
         {#if project.tracks.length === 0}
           <div class="empty">No tracks yet. Hit the big red button, import a file, or record in OBS.</div>
@@ -1152,7 +1267,9 @@
               onselect={(a, b, e, ph) => onSel(t, a, b, e, ph)} onpickclip={(at) => pickClip(t, at)} oncontext={(at, e) => openAudioMenu(t, at, e)}
               clips={laneClips(t)} movingIndex={clipDrag?.moved && clipDrag.fromId === t.id ? clipDrag.index : null}
               ongrab={(i, e, at) => grabClip(t, i, e, at)} onlayers={(i) => openLayers(t, i)}
-              color={t.kind === "obs" ? "#8b7bff" : t.kind === "recovered" ? "#ffb020" : "#19d3b0"} />
+              onfade={(i, edge, ms) => laneFade(t, i, edge, ms)} onxfade={(i, ms) => laneXfade(t.id, i, ms)}
+              onxfademenu={(i, e) => { xfMenu = { trackId: t.id, index: i, x: e.clientX, y: e.clientY }; tick().then(() => document.querySelector<HTMLElement>(".xfpop [role=slider]")?.focus()); }}
+              color={t.kind === "obs" ? "#9b74ff" : t.kind === "recovered" ? "#ffd04a" : "#2ec4b6"} />
             {/if}
             </div></div></div>
           </div>
@@ -1161,7 +1278,15 @@
       </div>
     </section>
 
-    <aside>
+    {#if workspace === "fx"}
+      <aside class="fxaside">
+        <EffectsWorkspace trackName={activeTrack() && !E.isLabelTrack(activeTrack()!) ? activeTrack()!.name : null} chain={activeTrack()?.fx ?? []}
+          clip={cursorClip ? { name: clipName(cursorClip.q.clip), at: cursorClip.q.a, fx: cursorClip.q.clip.fx ?? [] } : null}
+          hasSelection={hasRange() && selection?.trackId === activeTrack()?.id}
+          ontrack={changeFx} ontracklive={liveTrackDraft} onclip={changeCursorClipFx} onlearn={learnNoise} />
+      </aside>
+    {/if}
+    <aside class:hidden={workspace === "fx"}>
       {#if selection && selection.trackId === activeTrack()?.id && hasRange()}
         <div class="panel">
           <h3>Selection {fmtTime(selection.a)}–{fmtTime(selection.b)}</h3>
@@ -1265,35 +1390,45 @@
 
 <style>
   .app { display: flex; flex-direction: column; height: 100vh; }
-  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line-dark); background: linear-gradient(180deg, #2a2c31, #1d1f22); box-shadow: 0 1px 0 #ffffff0d inset, 0 3px 10px #0008; position: relative; z-index: 2; }
   .brand { font-size: 17px; margin-right: auto; } .brand b { color: var(--accent); } .aboutlink { margin-top: 10px; width: 100%; background: transparent; color: var(--accent); }
   .brand { display: flex; align-items: center; gap: 8px; } .logo { border-radius: 6px; }
-  .devsel { width: 320px; }
+  .devsel { flex: 0 1 300px; min-width: 150px; }
+  header > button, .wsw button { white-space: nowrap; flex: none; }
+  .brand { min-width: 0; white-space: nowrap; } .proj { overflow: hidden; text-overflow: ellipsis; max-width: 240px; min-width: 0; }
   main { flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 16px; padding: 16px; overflow: hidden; }
   .left { display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
-  aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
-  .recpanel { display: flex; gap: 24px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
-  .bigrec { width: 110px; height: 110px; border-radius: 50%; border: 4px solid #2e3746; background: radial-gradient(circle at 35% 30%, #ff6b84, var(--rec)); flex: none; transition: transform .1s, box-shadow .2s; }
-  .bigrec:hover { transform: scale(1.04); border-color: #fff3; }
+  aside { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; } aside.hidden { display: none; }
+  .xfveil { position: fixed; inset: 0; z-index: 90; }
+  .xfpop { position: fixed; z-index: 91; width: 290px; padding: 12px 14px; box-shadow: var(--hw-shadow), 0 12px 32px #000c; outline: none; }
+  .xfpop h3 { margin: 0 0 8px; font-size: 12px; } .xfrow { display: flex; gap: 12px; align-items: flex-start; } .xfside { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  main.fxws { grid-template-columns: minmax(0, 1fr) minmax(420px, 46%); }
+  .fxaside { overflow: hidden; }
+  .wsw { display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: var(--inset-bg); box-shadow: var(--inset-shadow); }
+  .wsw button { border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; background: none; border-color: transparent; box-shadow: none; color: var(--muted); }
+  .wsw button[aria-selected="true"] { background: linear-gradient(180deg, #ffb658, var(--accent)); color: var(--accent-ink); box-shadow: 0 0 10px rgb(var(--accent-rgb) / .35); }
+  .panel { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 14px; }
+  .recpanel { display: flex; gap: 24px; align-items: center; background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 20px; }
+  .bigrec { width: 110px; height: 110px; border-radius: 50%; border: 6px solid #15161a; background: radial-gradient(circle at 35% 30%, #ff7b8f, var(--rec) 55%, #a8202c); box-shadow: 0 0 0 3px #3a3d43, 0 0 0 4px #0009, 0 6px 14px #000a, 0 2px 0 #ffffff33 inset; flex: none; transition: transform .1s, box-shadow .2s; }
+  .bigrec:hover { transform: scale(1.03); }
   .bigrec.on { animation: pulse 1.4s infinite; }
   .bigrec .ico { font-size: 42px; color: #fff; }
-  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 #ff3b5c88; } 50% { box-shadow: 0 0 0 18px #ff3b5c00; } }
+  @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgb(var(--rec-rgb) / 0.53); } 50% { box-shadow: 0 0 0 18px rgb(var(--rec-rgb) / 0.00); } }
   .recinfo { flex: 1; }
-  .time { font-size: 38px; font-variant-numeric: tabular-nums; font-weight: 300; }
+  .time { display: inline-block; font-size: 34px; font-variant-numeric: tabular-nums; font-weight: 600; letter-spacing: .04em; color: var(--accent); text-shadow: 0 0 10px rgb(var(--accent-rgb) / .45); background: var(--inset-bg); box-shadow: var(--inset-shadow); border-radius: 8px; padding: 2px 14px; margin-bottom: 6px; }
   .hint, .small { color: var(--muted); font-size: 12px; } .hint { margin-bottom: 8px; }
   .tracks { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
   .empty { color: var(--muted); text-align: center; padding: 60px; border: 2px dashed var(--line); border-radius: 12px; }
-  .track.act { border-color: #19d3b066; }
+  .track.act { border-color: rgb(var(--accent-rgb) / 0.40); }
   .scroll { overflow-x: auto; }
   .lane { position: relative; overflow: hidden; }
-  .ghost { position: absolute; top: 0; bottom: 0; z-index: 5; pointer-events: none; border: 2px dashed #19d3b0; background: #19d3b030; border-radius: 4px; box-sizing: border-box; }
-  .ghost span { position: absolute; top: 1px; left: 4px; font-size: 10px; color: #cfeee7; white-space: nowrap; }
-  .ghost.bad { border-color: var(--rec); background: #ff3b5c30; }
-  .snapline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid #4da3ff; z-index: 6; pointer-events: none; }
-  .track.droptarget { border-color: #19d3b0; box-shadow: 0 0 0 1px #19d3b0, 0 0 14px #19d3b033; }
+  .ghost { position: absolute; top: 0; bottom: 0; z-index: 5; pointer-events: none; border: 2px dashed var(--accent); background: rgb(var(--accent-rgb) / 0.19); border-radius: 4px; box-sizing: border-box; }
+  .ghost span { position: absolute; top: 1px; left: 4px; font-size: 10px; color: var(--text); white-space: nowrap; }
+  .ghost.bad { border-color: var(--rec); background: rgb(var(--rec-rgb) / 0.19); }
+  .snapline { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px solid var(--blue); z-index: 6; pointer-events: none; }
+  .track.droptarget { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgb(var(--accent-rgb) / 0.20); }
   .track.dropbad { border-color: var(--rec); box-shadow: 0 0 0 1px var(--rec); }
-  .dragread { position: fixed; z-index: 80; pointer-events: none; background: #0e1117ee; border: 1px solid #19d3b0; color: var(--text); font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
+  .dragread { position: fixed; z-index: 80; pointer-events: none; background: rgb(var(--bg-rgb) / 0.93); border: 1px solid var(--accent); color: var(--text); font-size: 12px; padding: 4px 8px; border-radius: 6px; white-space: nowrap; }
   .dragread.bad { border-color: var(--rec); } .dragread b { font-variant-numeric: tabular-nums; color: var(--accent); }
   .paused { font-size: 14px; color: var(--warn); letter-spacing: .1em; }
   .sendvid { width: 100%; padding: 10px; font-weight: 600; }
@@ -1303,28 +1438,28 @@
   .rec-banner { border-color: var(--warn); } .row2 { display: flex; gap: 8px; margin-top: 8px; } .row2 button { flex: 1; }
   .hint2 { text-align: center; padding: 6px; }
   .mixbar { display: flex; gap: 8px; align-items: center; }
-  .virthint { background: #19d3b012; border: 1px solid #19d3b044; border-radius: 8px; padding: 8px; font-size: 11px; color: var(--muted); }
+  .virthint { background: rgb(var(--accent-rgb) / 0.07); border: 1px solid rgb(var(--accent-rgb) / 0.27); border-radius: 8px; padding: 8px; font-size: 11px; color: var(--muted); }
   .segs { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
   .seg { text-align: left; font-size: 12px; padding: 4px 6px; background: transparent; border: none; border-radius: 6px; }
   .seg:hover { background: var(--panel2); } .seg b { color: var(--accent); margin-right: 6px; font-variant-numeric: tabular-nums; }
-  .track { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+  .track { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 10px 12px; }
   .thead { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   .play { width: 34px; height: 34px; padding: 0; border-radius: 50%; }
-  .tname { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
-  .tag { font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 10px; background: #19d3b022; color: var(--accent); }
-  .track.multi { box-shadow: inset 3px 0 0 #4da3ff; }
-  .vbtn { padding: 1px 7px; border-radius: 10px; background: #ffffff0d; border: 1px solid #ffffff1a; cursor: pointer; } .vbtn.on { border-color: #19d3b0; color: #19d3b0; }
+  .tname { font-weight: 800; text-transform: uppercase; letter-spacing: .05em; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+  .tag { font-size: 10px; text-transform: uppercase; padding: 2px 7px; border-radius: 10px; background: rgb(var(--accent-rgb) / 0.13); color: var(--accent); }
+  .track.multi { box-shadow: inset 3px 0 0 var(--blue); }
+  .vbtn { padding: 1px 7px; border-radius: 10px; background: #ffffff0d; border: 1px solid #ffffff1a; cursor: pointer; } .vbtn.on { border-color: var(--accent); color: var(--accent); }
   .rename { width: 180px; padding: 2px 6px; font-weight: 600; }
   .vsel { padding: 0 20px 0 6px; background-position: right 6px center; height: 22px; width: auto !important; flex: none; min-width: 0; }
-  .tag.labels { background: #ffb02022; color: #ffd27a; }
-  .tag.audacity { background: #3d8bff22; color: #7fb2ff; }
-  button.tag.flag { border: 1px solid #ffb02066; background: #ffb02014; color: var(--warn); cursor: pointer; padding: 0 6px; font-size: 11px; }
-  .drophint { position: fixed; inset: 12px; border: 3px dashed #19d3b0; border-radius: 14px; background: #0b0f14cc; display: grid; place-items: center; z-index: 60; pointer-events: none; font-size: 18px; }
+  .tag.labels { background: rgb(var(--warn-rgb) / 0.13); color: #ffd27a; }
+  .tag.audacity { background: rgb(var(--blue-rgb) / 0.13); color: #7fb2ff; }
+  button.tag.flag { border: 1px solid rgb(var(--warn-rgb) / 0.40); background: rgb(var(--warn-rgb) / 0.08); color: var(--warn); cursor: pointer; padding: 0 6px; font-size: 11px; }
+  .drophint { position: fixed; inset: 12px; border: 3px dashed var(--accent); border-radius: 14px; background: rgb(var(--bg-rgb) / 0.80); display: grid; place-items: center; z-index: 60; pointer-events: none; font-size: 18px; }
   .aupbusy { position: fixed; right: 16px; bottom: 16px; z-index: 55; width: 320px; }
-  .aupbusy .bar { height: 6px; background: #ffffff1a; border-radius: 3px; margin: 8px 0 4px; overflow: hidden; } .aupbusy .bar div { height: 100%; background: #19d3b0; }
+  .aupbusy .bar { height: 6px; background: #ffffff1a; border-radius: 3px; margin: 8px 0 4px; overflow: hidden; } .aupbusy .bar div { height: 100%; background: var(--accent); }
   .modal-back { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; z-index: 70; }
   .modal { max-width: 560px; max-height: 80vh; overflow: auto; } .modal p { margin: 6px 0; white-space: pre-wrap; }
-  .tag.obs { background: #8b7bff22; color: #a99cff; } .tag.recovered { background: #ffb02022; color: var(--warn); }
+  .tag.obs { background: rgb(var(--purple-rgb) / 0.13); color: #a99cff; } .tag.recovered { background: rgb(var(--warn-rgb) / 0.13); color: var(--warn); }
   .x { margin-left: auto; background: transparent; border: none; color: var(--muted); }
   .trimbtn { background: var(--accent); color: #002; border-color: var(--accent); }
   .seg { display: flex; gap: 4px; } .seg button { flex: 1; padding: 6px 4px; font-size: 12px; } .seg .sel { background: var(--accent); color: #002; border-color: var(--accent); }
@@ -1332,6 +1467,6 @@
   .vtrow { display: grid; grid-template-columns: 1fr 70px; gap: 6px; align-items: center; font-size: 12px; }
   .vtrow label { margin: 0; }
   .toasts { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; }
-  .toast { background: var(--panel2); border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 9px 14px; border-radius: 8px; font-size: 13px; }
+  .toast { background: linear-gradient(180deg, #2b2e33, #222428); border: 1px solid var(--line-dark); box-shadow: 0 6px 20px #000a; border-left: 4px solid var(--accent); padding: 9px 14px; border-radius: 8px; font-size: 13px; }
   .toast.warn { border-left-color: var(--warn); } .toast.err { border-left-color: var(--rec); }
 </style>

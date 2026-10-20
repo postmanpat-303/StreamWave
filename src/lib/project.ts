@@ -1,12 +1,12 @@
 // .twt project format (JSON). Stores the edit model + effect chains (incl. learned noise
 // profiles) and references to source files. Peaks are recomputed on open.
-import { usesClipFeatures, type Project, type Source, type EditTrack, type Marker } from "./editModel";
+import { usesClipFeatures, usesCrossfades, type Project, type Source, type EditTrack, type Marker } from "./editModel";
 
 export const FORMAT = "streamwave-project";
 /** Projects saved before the rename to StreamWave. */
 export const LEGACY_FORMATS = ["truewave-project"];
 /** Newest format this build reads. v2 (0.10.0) = gap clips and per-clip effect stacks. */
-export const VERSION = 2;
+export const VERSION = 3;
 export interface SourceRef { path: string; name: string; duration: number; sampleRate: number; channels: number; }
 export interface ProjectFile { format: string; version: number; savedAt: string; app: string; nextId: number; tracks: EditTrack[]; markers: Marker[]; sources: SourceRef[]; }
 
@@ -17,7 +17,7 @@ export function serialize(p: Project, sources: Map<string, Source>, nextId: numb
     return { path, name: s?.name ?? path.split(/[\\/]/).pop()!, duration: s?.duration ?? 0, sampleRate: s?.sampleRate ?? 0, channels: s?.channels ?? 0 };
   });
     // only projects that need the new clip data are marked v2, so simple projects still open in older versions
-  const f: ProjectFile = { format: FORMAT, version: usesClipFeatures(p) ? 2 : 1, savedAt: new Date().toISOString(), app: "StreamWave", nextId, tracks: p.tracks, markers: p.markers ?? [], sources: refs };
+  const f: ProjectFile = { format: FORMAT, version: usesCrossfades(p) ? 3 : usesClipFeatures(p) ? 2 : 1, savedAt: new Date().toISOString(), app: "StreamWave", nextId, tracks: p.tracks, markers: p.markers ?? [], sources: refs };
   return JSON.stringify(f);
 }
 

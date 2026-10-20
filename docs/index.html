@@ -177,12 +177,15 @@
     <div class="card"><div class="ico">🎥</div><h3>OBS sync</h3><p>Record, pause and stop together. Scene changes become markers. Multi-track OBS recordings import as separate tracks.</p></div>
     <div class="card"><div class="ico">🪄</div><h3>Studio Sound</h3><p>One click analyses your voice and builds a clean chain: denoise, EQ, de-ess, compress, -16 LUFS. Fully editable.</p></div>
     <div class="card"><div class="ico">⏪</div><h3>Never miss a take</h3><p>A rolling buffer keeps the last 60 seconds. Said something great before hitting record? Save it.</p></div>
-    <div class="card"><div class="ico">🎛</div><h3>Live effects</h3><p>Move a slider and hear it instantly. Exports use the same engine, so the file matches what you heard.</p></div>
+    <div class="card"><div class="ico">🎛</div><h3>Live effects</h3><p>Turn a knob and hear it instantly. Exports use the same engine, so the file matches what you heard.</p></div>
     <div class="card"><div class="ico">🛟</div><h3>Crash-safe recording</h3><p>Takes are written continuously and repaired after a crash or power cut. Unplugged mic? Your take is kept.</p></div>
     <div class="card"><div class="ico">📦</div><h3>All open formats</h3><p>WAV, FLAC, MP3, Ogg, Opus, AAC, AIFF and audio from MP4/MKV in. WAV, FLAC, MP3, Opus, Ogg and more out, with tags.</p></div>
     <div class="card"><div class="ico">🤝</div><h3>Shared mic, always</h3><p>Never takes exclusive control of your microphone. OBS, Discord and your browser keep working alongside.</p></div>
     <div class="card"><div class="ico">🩺</div><h3>Live mic check</h3><p>Warnings for clipping, too quiet, a dead channel or mains hum, before they ruin a recording.</p></div>
     <div class="card"><div class="ico">✂️</div><h3>Non-destructive editing</h3><p>Cut, copy, paste with full undo. Originals never change. Projects autosave and recover after a crash.</p></div>
+    <div class="card"><div class="ico">🧩</div><h3>Effects Layer workspace <small>new in 0.11</small></h3><p>A big effects editor: the track's effects and the clip's layers in a collapsible list, colour-coded modules with knobs.</p></div>
+    <div class="card"><div class="ico">🔀</div><h3>Crossfades <small>new in 0.11</small></h3><p>Blend neighbouring clips at a cut, equal power or linear, without moving anything. Plus drag-to-fade handles.</p></div>
+    <div class="card"><div class="ico">📏</div><h3>Ruler &amp; preview <small>new in 0.11</small></h3><p>A zoom-aware time ruler and a preview of the whole track with Zoom to selection. All in a new hardware look.</p></div>
     <div class="card"><div class="ico">📥</div><h3>Multi-file import <small>new in 0.10</small></h3><p>Drop several files at once: put them one after another on a track, or one track each, lined up. One undo.</p></div>
     <div class="card"><div class="ico">↔️</div><h3>Move clips <small>new in 0.10</small></h3><p>Drag clips along the timeline or onto another track, with a ghost, snapping and an exact time readout. No drift.</p></div>
     <div class="card"><div class="ico">◧</div><h3>Layering Effects <small>new in 0.10</small></h3><p>Give one clip its own effect stack. Reorder, bypass and edit the layers, heard live and exported identically.</p></div>
@@ -198,36 +201,48 @@
 
 <section id="shots" class="shots"><div class="wrap">
   <h2>See it in action</h2>
-  <p class="sub">Real screenshots of StreamWave 0.8.3 on Linux, with a demo podcast episode (self-generated voice and music).</p>
+  <p class="sub">Real screenshots of StreamWave 0.11.0 on Linux, with a demo podcast episode (self-generated voice and music).</p>
   <figure class="shot">
-    <a href="screenshots/01-main.png"><img src="screenshots/01-main.png" alt="StreamWave main window: the big record button with live input meters, a podcast episode with Host mic, Guest (Discord) and Music bed tracks, chapter markers, a Show notes label track, and the Studio Sound, effects and OBS panels on the right" width="1600" height="1000" loading="lazy" decoding="async"></a>
-    <figcaption><b>Record, edit, clean up.</b> One big button to record with live meters, a multi-track timeline with markers and a label track for show notes, and Studio Sound, live effects and OBS sync one glance away.</figcaption>
+    <a href="screenshots/01-main.png"><img src="screenshots/01-main.png" alt="StreamWave main window in the new hardware look: the big record button in a bezel with LED input meters, the selected-audio preview strip, a time ruler with chapter markers, Host mic, Guest (Discord) and Music bed tracks with a crossfade at a cut, and the Effects rack with colour-coded modules on the right" width="1560" height="960" loading="lazy" decoding="async"></a>
+    <figcaption><b>Record, edit, clean up.</b> One big button to record with LED meters, a preview of the selected audio, a time ruler over a multi-track timeline with markers and crossfades, and Studio Sound, live effects and OBS sync one glance away.</figcaption>
   </figure>
   <div class="carousel" role="region" aria-roledescription="carousel" aria-label="More StreamWave screenshots">
     <button class="cbtn prev" type="button" aria-label="Previous screenshot">‹</button>
     <div class="track" tabindex="0" aria-label="Screenshots, scroll sideways for more">
-      <figure class="shot" role="group" aria-roledescription="slide" aria-label="1 of 6">
-        <a href="screenshots/02-context-menu.png"><img src="screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound" width="1600" height="1000" loading="lazy" decoding="async"></a>
-        <figcaption><b>Right-click anything.</b> Cut, split, label or apply an effect straight to the selection.</figcaption>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="1 of 9">
+        <a href="screenshots/08-effects-layer.png"><img src="screenshots/08-effects-layer.png" alt="Effects Layer workspace: a list of the Host mic track's effects and the clip's layers on the left, a signal-flow strip, and the Equalizer module with colour-coded knobs for low cut, shelves and three bands" width="1560" height="960" loading="lazy" decoding="async"></a>
+        <figcaption><b>Effects Layer workspace.</b> Every effect of the track and the clip under the cursor, with big colour-coded knobs, heard live.</figcaption>
       </figure>
-      <figure class="shot" role="group" aria-roledescription="slide" aria-label="2 of 6">
-        <a href="screenshots/03-spectrogram.png"><img src="screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view, zoomed in, showing speech harmonics and a low hum band, with chapter markers above" width="1600" height="1000" loading="lazy" decoding="async"></a>
-        <figcaption><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</figcaption>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="2 of 9">
+        <a href="screenshots/09-crossfade.png"><img src="screenshots/09-crossfade.png" alt="Zoomed timeline with a crossfade between two Host mic clips: the fade curves drawn across the cut and the crossfade panel open with a Length knob at 1252 ms, the curve set to Equal power and a Remove crossfade button" width="1560" height="960" loading="lazy" decoding="async"></a>
+        <figcaption><b>Crossfades.</b> Drag or click the handle at a cut: equal power or linear, centred on the cut, plays exactly as it exports.</figcaption>
       </figure>
-      <figure class="shot" role="group" aria-roledescription="slide" aria-label="3 of 6">
-        <a href="screenshots/04-effects.png"><img src="screenshots/04-effects.png" alt="Effects panel for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup sliders), Loudness and Limiter" width="1600" height="1000" loading="lazy" decoding="async"></a>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="3 of 9">
+        <a href="screenshots/02-context-menu.png"><img src="screenshots/02-context-menu.png" alt="Right-click menu on a selection in the Host mic track, with the Effects submenu open listing Gain, Equalizer, Compressor, Noise gate, Noise reduction, De-esser, AI denoise, Limiter, Loudness, Normalize, fades and Studio Sound" width="1560" height="960" loading="lazy" decoding="async"></a>
+        <figcaption><b>Right-click anything.</b> Cut, split, label, open Layering Effects or apply an effect straight to the selection.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="4 of 9">
+        <a href="screenshots/10-effect-dialog.png"><img src="screenshots/10-effect-dialog.png" alt="Compressor dialog for a selection with knobs for threshold, ratio, attack, release and makeup, and Apply, Add to track effects instead and Cancel buttons" width="1560" height="960" loading="lazy" decoding="async"></a>
+        <figcaption><b>Knobs, not sliders.</b> Drag, scroll or use the arrow keys; Shift for fine steps, double-click to reset.</figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="5 of 9">
+        <a href="screenshots/04-effects.png"><img src="screenshots/04-effects.png" alt="Effects rack for the Host mic track after choosing the Podcast voice preset: Equalizer, Noise gate, Compressor (expanded, with threshold, ratio, attack, release and makeup knobs), Loudness and Limiter, each in its own colour" width="1560" height="960" loading="lazy" decoding="async"></a>
         <figcaption><b>Live effects chain.</b> One-click presets build an editable chain you hear instantly while it plays.</figcaption>
       </figure>
-      <figure class="shot" role="group" aria-roledescription="slide" aria-label="4 of 6">
-        <a href="screenshots/05-aup3-import.png"><img src="screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed" width="1600" height="1000" loading="lazy" decoding="async"></a>
-        <figcaption><b>Bring your Audacity projects.</b> Tracks and labels come across from .aup3; your original file is only read.</figcaption>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="6 of 9">
+        <a href="screenshots/03-spectrogram.png"><img src="screenshots/03-spectrogram.png" alt="Host mic and Guest tracks switched to spectrogram view with a log frequency scale, showing speech harmonics, with chapter markers and the time ruler above" width="1560" height="960" loading="lazy" decoding="async"></a>
+        <figcaption><b>Spectrogram view.</b> Spot hum, hiss and plosives at a glance, with a log or linear scale.</figcaption>
       </figure>
-      <figure class="shot" role="group" aria-roledescription="slide" aria-label="5 of 6">
-        <a href="screenshots/06-export.png"><img src="screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="1600" height="1000" loading="lazy" decoding="async"></a>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="7 of 9">
+        <a href="screenshots/05-aup3-import.png"><img src="screenshots/05-aup3-import.png" alt="Summary dialog after importing an Audacity project: 3 tracks (3 clips) and 4 labels imported as markers, a note about pan, where the audio was copied, and confirmation that the .aup3 file was not changed" width="1600" height="1000" loading="lazy" decoding="async"></a>
+        <figcaption><b>Bring your Audacity projects.</b> Tracks and labels come across from .aup3; your original file is only read. <small>(0.8.3 screenshot)</small></figcaption>
+      </figure>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="8 of 9">
+        <a href="screenshots/06-export.png"><img src="screenshots/06-export.png" alt="Export panel for the Host mic track with the format list open: WAV, FLAC, WavPack, Matroska audio, MP3, Ogg Vorbis, Opus, WebM (Opus) and Speex" width="1560" height="960" loading="lazy" decoding="async"></a>
         <figcaption><b>Export to open formats.</b> WAV, FLAC, WavPack, MP3, Ogg, Opus, WebM and more, with tags.</figcaption>
       </figure>
-      <figure class="shot" role="group" aria-roledescription="slide" aria-label="6 of 6">
-        <a href="screenshots/07-about.png"><img src="screenshots/07-about.png" alt="About StreamWave dialog: version 0.8.3, created by Del (postmanpat), a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="1600" height="1000" loading="lazy" decoding="async"></a>
+      <figure class="shot" role="group" aria-roledescription="slide" aria-label="9 of 9">
+        <a href="screenshots/07-about.png"><img src="screenshots/07-about.png" alt="About StreamWave dialog: version 0.11.0, created by Del (postmanpat), a Buy me a coffee button, PayPal and YouTube links, Check for updates and the GitHub link" width="1560" height="960" loading="lazy" decoding="async"></a>
         <figcaption><b>Free and open source.</b> Made by Del (postmanpat), MIT licensed, with a Buy me a coffee button if it saves you time.</figcaption>
       </figure>
     </div>
@@ -281,7 +296,7 @@
 
 <section id="download" class="dl"><div class="wrap">
   <h2>Get StreamWave</h2>
-  <p class="sub">Version 0.10.0 for Windows, Linux and macOS. On Windows and the Linux AppImage the app updates itself from Help → Check for updates; on Mac and with the Linux packages, it tells you about new versions and you install them by hand.</p>
+  <p class="sub">Version 0.11.0 for Windows, Linux and macOS. On Windows and the Linux AppImage the app updates itself from Help → Check for updates; on Mac and with the Linux packages, it tells you about new versions and you install them by hand.</p>
   <div class="dlbox">
     <div class="card"><div class="ico">🪟</div><h3>Windows 10 / 11</h3><p>NSIS installer, per-user, FFmpeg included. Updates itself.</p><p class="req">64-bit Windows 10 or 11</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download .exe</a></div>
     <div class="card"><div class="ico">🐧</div><h3>Linux</h3><p><b>.deb</b> for Debian/Ubuntu/Mint, <b>.rpm</b> for Fedora/openSUSE, <b>.pkg.tar.zst</b> for Arch/CachyOS/Manjaro, or the <b>AppImage</b> for any distro (the AppImage updates itself). Install FFmpeg from your package manager.</p><p class="req">64-bit (x86_64), PipeWire, PulseAudio or JACK</p><br><a class="btn primary" href="https://github.com/postmanpat-303/StreamWave/releases/latest">Download for Linux</a></div>
@@ -289,7 +304,7 @@
   </div>
   <div class="firstrun">
     <p>🛡 <b>Windows:</b> the installer isn't code-signed yet. If SmartScreen appears, click <b>More info → Run anyway</b>.</p>
-    <p>🐧 <b>Linux install:</b> <code>sudo apt install ./StreamWave-0.10.0-linux-x86_64.deb</code> · <code>sudo dnf install ./StreamWave-0.10.0-linux-x86_64.rpm</code> · <code>sudo pacman -U ./StreamWave-0.10.0-linux-x86_64.pkg.tar.zst</code> · or <code>chmod +x</code> the AppImage and run it. Package installs update by installing the new package; the app tells you when there is one.</p>
+    <p>🐧 <b>Linux install:</b> <code>sudo apt install ./StreamWave-0.11.0-linux-x86_64.deb</code> · <code>sudo dnf install ./StreamWave-0.11.0-linux-x86_64.rpm</code> · <code>sudo pacman -U ./StreamWave-0.11.0-linux-x86_64.pkg.tar.zst</code> · or <code>chmod +x</code> the AppImage and run it. Package installs update by installing the new package; the app tells you when there is one.</p>
     <p>🍎 <b>Mac, first launch:</b> drag StreamWave into Applications. It isn't notarised by Apple yet, so the first time <b>right-click (or Control-click) the app, choose Open</b>, then Open again. On newer macOS (Sequoia 15+), go to <b>System Settings → Privacy &amp; Security</b> and click <b>Open Anyway</b>. After that it opens normally. To update, download the new .dmg and replace the app in Applications.</p>
   </div>
 </div></section>

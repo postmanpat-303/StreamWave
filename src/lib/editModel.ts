@@ -6,8 +6,13 @@ export interface Source { path: string; name: string; duration: number; sampleRa
 /** seconds inside the source file; `split` = a deliberate clip boundary before this clip (Split/Join).
  * `gap` = silence (src ""), used to position clips freely on the timeline (0.10.0).
  * `fx` = the clip's own ordered effect stack ("Layering Effects"), owned by this clip instance. */
-export interface Clip { src: string; start: number; end: number; split?: boolean; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; gap?: boolean; fx?: FxSlot[]; }
-export type ClipProps = { gain_db?: number; fade_in_ms?: number; fade_out_ms?: number };
+export interface Clip { src: string; start: number; end: number; split?: boolean; gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; gap?: boolean; fx?: FxSlot[];
+  /** shape of this clip's own fades (default: the S-curve every older version used) */ fade_curve?: FadeCurve;
+  /** crossfade with the previous clip, centred on the cut (format v3) */ xfade_ms?: number; xfade_curve?: XfadeCurve;
+  /** signature of the clip it crossfades from; an edit that changes that neighbour drops the crossfade */ xfade_from?: string; }
+export type FadeCurve = "s_curve" | "linear" | "equal_power";
+export type XfadeCurve = "linear" | "equal_power";
+export type ClipProps = { gain_db?: number; fade_in_ms?: number; fade_out_ms?: number; fade_curve?: FadeCurve };
 /** Text label on a label track (t1 > t0 for a range label). */
 export interface Label { id: number; t0: number; t1: number; text: string; }
 export type SpecScale = "log" | "linear";
@@ -44,7 +49,7 @@ function splitAt(clips: Clip[], t: number): Clip[] {
     const len = clipLen(c);
     if (t > pos + EPS && t < pos + len - EPS) {
       const cut = c.start + (t - pos);
-      out.push({ ...c, end: cut }, { ...c, start: cut, split: undefined });
+      out.push({ ...c, end: cut }, stripXfade({ ...c, start: cut, split: undefined })); // a crossfade belongs to the clip's head only
     } else out.push(c);
     pos += len;
   }
@@ -92,16 +97,22 @@ const sameFx = (a: Clip, b: Clip) => JSON.stringify(a.fx ?? []) === JSON.stringi
  * Neighbouring gaps become one gap and trailing gaps are dropped, so a track ends where its last audio ends. */
 function merge(clips: Clip[]): Clip[] {
   const sameProps = (a: Clip, b: Clip) =>
-    (a.gain_db ?? 0) === (b.gain_db ?? 0) && (a.fade_in_ms ?? 0) === (b.fade_in_ms ?? 0) && (a.fade_out_ms ?? 0) === (b.fade_out_ms ?? 0) && sameFx(a, b);
+    (a.gain_db ?? 0) === (b.gain_db ?? 0) && (a.fade_in_ms ?? 0) === (b.fade_in_ms ?? 0) && (a.fade_out_ms ?? 0) === (b.fade_out_ms ?? 0) &&
+    (a.fade_curve ?? "s_curve") === (b.fade_curve ?? "s_curve") && sameFx(a, b);
   const out: Clip[] = [];
   for (const c of clips) {
     if (clipLen(c) < EPS) continue;
     const p = out[out.length - 1];
     if (p && p.gap && c.gap) out[out.length - 1] = gap(clipLen(p) + clipLen(c));
-    else if (p && !c.split && !c.gap && !p.gap && p.src === c.src && Math.abs(p.end - c.start) < EPS && sameProps(p, c)) out[out.length - 1] = { ...p, end: c.end };
+    else if (p && !c.split && !c.xfade_ms && !c.gap && !p.gap && p.src === c.src && Math.abs(p.end - c.start) < EPS && sameProps(p, c)) out[out.length - 1] = { ...p, end: c.end };
     else out.push(tidy(c, out.length === 0));
   }
   while (out.length && out[out.length - 1].gap) out.pop();
+  // a crossfade stays only while its clip still follows the same neighbour (cut/paste/move/trim drop it)
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i]; if (c.xfade_ms === undefined) continue;
+    const p = out[i - 1]; if (!p || p.gap || c.gap || xfadeSig(p) !== c.xfade_from) out[i] = stripXfade(c);
+  }
   return out;
 }
 
@@ -312,6 +323,59 @@ export function setClipFx(p: Project, trackId: number, index: number, fx: FxSlot
     return { ...t, clips };
   });
 }
+// ---- crossfades -------------------------------------------------------------------
+export const xfadeSig = (c: Clip) => `${c.src}|${c.end.toFixed(6)}`;
+export function stripXfade(c: Clip): Clip { if (c.xfade_ms === undefined && c.xfade_curve === undefined && c.xfade_from === undefined) return c; const { xfade_ms, xfade_curve, xfade_from, ...r } = c; return r; }
+/** Crossfade length that will actually be heard at the head of clip i (same clamping as the renderer): limited by the
+ *  source audio beyond the previous clip's end and before this clip's start, and by either clip's length. */
+export function xfadeLen(t: EditTrack, i: number, srcDur: (src: string) => number | undefined): number {
+  const c = t.clips[i], p = t.clips[i - 1];
+  if (!c || !p || c.gap || p.gap || !c.xfade_ms) return 0;
+  const tail = Math.max(0, (srcDur(p.src) ?? p.end) - p.end), head = Math.max(0, c.start);
+  return Math.max(0, Math.min(c.xfade_ms, 2000 * tail, 2000 * head, 1000 * clipLen(c), 1000 * clipLen(p)));
+}
+/** Can clip i get a crossfade (both it and the clip before it are audio)? */
+export const canCrossfade = (t: EditTrack, i: number) => i > 0 && !!t.clips[i] && !t.clips[i].gap && !t.clips[i - 1].gap;
+/**
+ * Set (ms > 0) or remove (ms = 0) the crossfade between clip `index` and the clip before it. The crossfade is centred
+ * on the cut and plays the sources' spare audio ("handles") on both sides, so nothing moves. Where a source has no
+ * spare audio there (e.g. two whole files back to back), the clips are trimmed by the missing amount so they truly
+ * overlap; everything after the cut then moves left by `trimmed` seconds. The length is limited to what both clips allow.
+ */
+export function setCrossfade(p: Project, trackId: number, index: number, ms: number, curve: XfadeCurve, srcDur: (src: string) => number | undefined):
+  { project: Project; ms: number; trimmed: number } | null {
+  const t = p.tracks.find((x) => x.id === trackId); if (!t || isLabelTrack(t) || !canCrossfade(t, index)) return null;
+  const prev = t.clips[index - 1], c = t.clips[index], clips = [...t.clips];
+  if (!(ms > 0)) { clips[index] = stripXfade(c); return { project: mapTrack(p, trackId, (x) => ({ ...x, clips: merge(clips) })), ms: 0, trimmed: 0 }; }
+  const tail = Math.max(0, (srcDur(prev.src) ?? prev.end) - prev.end), head = Math.max(0, c.start);
+  const plan = (m: number) => { const h = m / 2000, nt = Math.max(0, h - tail), nh = Math.max(0, h - head);
+    return { nt, nh, ok: m / 1000 <= clipLen(prev) - nt + 1e-9 && m / 1000 <= clipLen(c) - nh + 1e-9 }; };
+  let m = Math.round(ms); while (m > 1 && !plan(m).ok) m = Math.floor(m * 0.97);
+  const { nt, nh, ok } = plan(m); if (!ok || m < 1) return null;
+  const np: Clip = { ...prev, end: prev.end - nt };
+  clips[index - 1] = np;
+  clips[index] = { ...c, start: c.start + nh, xfade_ms: m, xfade_curve: curve, xfade_from: xfadeSig(np) };
+  // the clip after `index` keeps its own crossfade: its signature uses this clip's end, which did not change
+  return { project: mapTrack(p, trackId, (x) => ({ ...x, clips: merge(clips) })), ms: m, trimmed: nt + nh };
+}
+/** Fade-in gain at x in [0,1] for a curve (fade-out = gain(1 - x)); identical to the renderer's curves. */
+export function curveGain(curve: FadeCurve | XfadeCurve | undefined, x: number): number {
+  x = Math.max(0, Math.min(1, x));
+  return curve === "linear" ? x : curve === "equal_power" ? Math.sin((x * Math.PI) / 2) : 0.5 * (1 - Math.cos(Math.PI * x));
+}
+/** Set one clip's own fade-in or fade-out (ms) by index; fades never overlap each other inside the clip. */
+export function setClipFade(p: Project, trackId: number, index: number, edge: "in" | "out", ms: number): Project {
+  return mapTrack(p, trackId, (t) => {
+    const c = t.clips[index]; if (!c || c.gap) return t;
+    const other = edge === "in" ? c.fade_out_ms ?? 0 : c.fade_in_ms ?? 0;
+    const v = Math.round(Math.max(0, Math.min(ms, clipLen(c) * 1000 - other)));
+    const n: Clip = { ...c }; if (edge === "in") { if (v) n.fade_in_ms = v; else delete n.fade_in_ms; } else { if (v) n.fade_out_ms = v; else delete n.fade_out_ms; }
+    const clips = [...t.clips]; clips[index] = n; return { ...t, clips };
+  });
+}
+/** Does the project use crossfades or non-default fade shapes (format v3)? */
+export const usesCrossfades = (p: Project) => p.tracks.some((t) => t.clips.some((c) => (c.xfade_ms ?? 0) > 0 || (c.fade_curve && c.fade_curve !== "s_curve")));
+
 /** Does the project use 0.10.0-only clip data (gaps or clip effects)? */
 export const usesClipFeatures = (p: Project) => p.tracks.some((t) => t.clips.some((c) => c.gap || (c.fx && c.fx.length)));
 

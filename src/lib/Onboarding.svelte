@@ -48,7 +48,7 @@
 </div>
 <style>
   .veil { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 100; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; width: min(520px, 92vw); display: flex; flex-direction: column; gap: 10px; }
+  .card { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); padding: 22px; width: min(520px, 92vw); display: flex; flex-direction: column; gap: 10px; }
   .steps { display: flex; gap: 12px; font-size: 12px; color: var(--muted); } .steps .on { color: var(--accent); font-weight: 600; }
   .row { display: flex; gap: 8px; margin-top: 8px; } .grow { flex: 1; }
   .ghost { background: transparent; } .note { font-size: 12px; color: var(--muted); }

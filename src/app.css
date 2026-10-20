@@ -1,23 +1,77 @@
-:root { --bg:#0e1117; --panel:#161b24; --panel2:#1d2430; --line:#2a3342; --text:#e6ebf2; --muted:#8a96a8; --accent:#19d3b0; --rec:#ff3b5c; --warn:#ffb020;
-  font-family: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif; color: var(--text); background: var(--bg);
+/* StreamWave theme: dark "hardware" look. Charcoal brushed panels with corner screws, orange accent,
+   teal / blue / pink / purple for meters and bands. All colours come from these tokens. */
+:root {
+  --bg: #121316; --bg-rgb: 18 19 22;
+  --panel: #202226; --panel2: #292b30; --panel3: #32353a; --line: #3b3e44; --line-dark: #0a0b0d;
+  --text: #ececee; --muted: #9a9da5;
+  --accent: #f5a03a; --accent-rgb: 245 160 58; --accent-ink: #1c1205;
+  --teal: #2ec4b6; --teal-rgb: 46 196 182; --blue: #4d9bff; --blue-rgb: 77 155 255; --blue-hi: #8cbcff;
+  --pink: #ff5c8a; --purple: #9b74ff; --purple-rgb: 155 116 255;
+  --rec: #ff4b4b; --rec-rgb: 255 75 75; --warn: #ffd04a; --warn-rgb: 255 208 74;
+  --tick-off: #44474d;
+  --wave: #2ec4b6; --wave-obs: #9b74ff; --wave-recovered: #ffd04a;
+  --hw-radius: 10px;
+  --hw-border: 1px solid var(--line-dark);
+  --hw-shadow: 0 1px 0 #ffffff0d inset, 0 -1px 0 #0006 inset, 0 6px 16px #0007;
+  /* screw heads (4 corners) over a vertical brushed-metal gradient */
+  --screw: radial-gradient(circle, #6d7178 0 1.6px, #3c3f45 2.1px, #17181b 3.3px, #ffffff10 3.9px, transparent 4.4px);
+  --hw-bg:
+    var(--screw) left 5px top 5px / 10px 10px no-repeat,
+    var(--screw) right 5px top 5px / 10px 10px no-repeat,
+    var(--screw) left 5px bottom 5px / 10px 10px no-repeat,
+    var(--screw) right 5px bottom 5px / 10px 10px no-repeat,
+    repeating-linear-gradient(90deg, #ffffff03 0 1px, transparent 1px 3px),
+    linear-gradient(180deg, #27292d 0%, #1f2124 55%, #1b1d20 100%);
+  --inset-bg: linear-gradient(180deg, #141518, #1a1b1f);
+  --inset-shadow: 0 1px 2px #000a inset, 0 1px 0 #ffffff0a;
+  font-family: Inter, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif; color: var(--text);
+  background: var(--bg);
   /* dark native form controls, scrollbars and popups (WebView2 and WebKitGTK) */
   color-scheme: dark; }
 * { box-sizing: border-box; }
-body { margin: 0; height: 100vh; overflow: hidden; }
-button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+body { margin: 0; height: 100vh; overflow: hidden;
+  background: radial-gradient(ellipse at 50% -20%, #2a2c31 0%, transparent 60%), repeating-linear-gradient(90deg, #ffffff02 0 1px, transparent 1px 4px), var(--bg); }
+
+/* Panels: brushed charcoal with screws. Components use class "hw" (or their own .panel rule with the same tokens). */
+.hw { background: var(--hw-bg); border: var(--hw-border); border-radius: var(--hw-radius); box-shadow: var(--hw-shadow); }
+
+/* Buttons: raised, outlined */
+button { font: inherit; font-weight: 600; letter-spacing: .01em; color: var(--text); background: linear-gradient(180deg, #2f3237, #24262a);
+  border: 1px solid #55585f; border-radius: 7px; padding: 7px 14px; cursor: pointer; box-shadow: 0 1px 0 #ffffff12 inset, 0 2px 4px #0006; }
 button:hover { border-color: var(--accent); }
+button:active { background: linear-gradient(180deg, #222428, #2a2c31); box-shadow: 0 1px 2px #0008 inset; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button:disabled { opacity: .45; cursor: default; }
-input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; width: 100%; }
+button:disabled:hover { border-color: #55585f; }
+/* the primary action: solid orange */
+button.primary { background: linear-gradient(180deg, #ffb658, var(--accent)); color: var(--accent-ink); border-color: #c97a1e; }
+/* outlined pill (presets, small toggles) */
+button.pill { border-radius: 999px; background: transparent; box-shadow: none; }
+
+input, select { font: inherit; color: var(--text); background: var(--inset-bg); border: 1px solid var(--line-dark); box-shadow: var(--inset-shadow);
+  border-radius: 7px; padding: 6px 9px; width: 100%; }
+input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); box-shadow: none; }
 /* Selects are drawn by us, not the platform theme: WebKitGTK on Linux otherwise paints a white
    GTK combo box with our light text on it, so the chosen value was invisible. */
-select { -webkit-appearance: none; appearance: none; background-color: var(--bg); color: var(--text);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238a96a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat: no-repeat; background-position: right 10px center; background-size: 10px 6px;
+select { -webkit-appearance: none; appearance: none; background-color: #17181b; color: var(--text);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23ececee' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"), var(--inset-bg);
+  background-repeat: no-repeat; background-position: right 10px center, 0 0; background-size: 10px 6px, auto;
   padding-right: 28px; cursor: pointer; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
 select:hover { border-color: var(--accent); }
 select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 select:disabled { opacity: .45; cursor: default; }
 option, optgroup { background-color: var(--panel); color: var(--text); }
-option:checked { background-color: var(--panel2); color: var(--accent); }
+option:checked { background-color: var(--panel3); color: var(--accent); }
+
+/* Remaining linear sliders: thin inset track, orange fill colour, round raised thumb */
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 18px; padding: 0; background: transparent; border: none; box-shadow: none; accent-color: var(--accent); }
+input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #0c0d0f; box-shadow: 0 1px 0 #ffffff0d; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #4a4e55, #24262a); border: 1px solid #000; box-shadow: 0 0 0 2px var(--accent) inset, 0 2px 3px #000a; }
+input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: #0c0d0f; }
+input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #2c2f34; border: 2px solid var(--accent); }
+
 label { font-size: 12px; color: var(--muted); display: block; margin: 8px 0 4px; }
-h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .09em; color: var(--text); }
+::selection { background: rgb(var(--accent-rgb) / .35); }
