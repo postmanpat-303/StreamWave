@@ -1,65 +1,147 @@
-//! Whisper transcription via an external whisper.cpp CLI (same pattern as FFmpeg:
-//! detected next to the executable, then on PATH). No model is bundled; point
-//! Settings → Whisper model at a ggml .bin file (see the user guide).
+//! Whisper transcription via an external whisper.cpp CLI (`whisper-cli`). No model is bundled.
+//!
+//! Which program StreamWave runs, in this order (see [`resolve`]):
+//! 1. the file the user chose ("I already have it", saved in settings),
+//! 2. StreamWave's own copy from "Set it up for me" (in the app-data folder, see `whisper_setup`),
+//! 3. `whisper-cli` next to the StreamWave executable,
+//! 4. `whisper-cli` on PATH (plus Homebrew/MacPorts on macOS, like FFmpeg).
+//! Only the name `whisper-cli` is looked up automatically: never whisper.cpp's old generic `main` (on PATH that
+//! could be any program) and not a bare `whisper` either (usually OpenAI's Python CLI, which takes other options).
+//! Paths are always passed to `Command` as separate arguments, never through a shell.
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
+
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Source { Settings, Managed, Bundled, Path }
 
 #[derive(Serialize)]
-pub struct WhisperInfo { pub found: bool, pub path: Option<String>, pub model_found: bool, pub message: String }
+pub struct WhisperInfo {
+    pub found: bool, pub path: Option<String>, pub source: Option<Source>,
+    pub model_found: bool, pub model_path: Option<String>, pub message: String,
+    /// StreamWave's own copy ("Set it up for me") is installed
+    pub managed: bool,
+    /// that copy's folder was added to the user's PATH (Windows)
+    pub path_added: bool,
+    /// the file chosen in settings no longer exists (so a later step was used, or nothing)
+    pub chosen_missing: bool,
+}
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
 pub struct Segment { pub start: f64, pub end: f64, pub text: String }
 
-pub fn find_whisper() -> Option<PathBuf> {
-    let names: [&str; 3] = if cfg!(windows) { ["whisper-cli.exe", "whisper.exe", "main.exe"] } else { ["whisper-cli", "whisper", "main"] };
-    // 1) next to our executable
-    if let Ok(me) = std::env::current_exe() {
-        if let Some(dir) = me.parent() {
-            for n in names { let p = dir.join(n); if p.is_file() { return Some(p) } }
+/// The CLI's file name on this OS.
+pub fn cli_name() -> &'static str { if cfg!(windows) { "whisper-cli.exe" } else { "whisper-cli" } }
+
+/// Where to look, in priority order. Kept as data so the order is unit-testable.
+pub struct Locations<'a> {
+    pub chosen: Option<&'a Path>,
+    pub managed_bin: Option<&'a Path>,
+    pub exe_dir: Option<&'a Path>,
+    pub path_dirs: &'a [PathBuf],
+}
+
+pub fn resolve(l: &Locations) -> Option<(PathBuf, Source)> {
+    if let Some(c) = l.chosen { if c.is_file() && plausible_name(c) { return Some((c.to_path_buf(), Source::Settings)) } }
+    if let Some(d) = l.managed_bin { let p = d.join(cli_name()); if p.is_file() { return Some((p, Source::Managed)) } }
+    if let Some(d) = l.exe_dir { let p = d.join(cli_name()); if p.is_file() { return Some((p, Source::Bundled)) } }
+    for d in l.path_dirs { let p = d.join(cli_name()); if p.is_file() { return Some((p, Source::Path)) } }
+    None
+}
+
+/// A file the user picks must at least be named like whisper.cpp's CLI (whisper-cli, whisper-cpp, whisper…);
+/// `main` and other generic names are refused.
+pub fn plausible_name(p: &Path) -> bool {
+    let Some(n) = p.file_name().map(|n| n.to_string_lossy().to_lowercase()) else { return false };
+    let n = n.strip_suffix(".exe").unwrap_or(&n).to_string();
+    n.starts_with("whisper")
+}
+
+/// Run `<bin> --help` (no shell, 10 s limit) and check it is whisper.cpp's CLI: its help lists `--output-json`,
+/// which OpenAI's Python `whisper` does not have. Returns the first help line on success.
+pub fn validate_cli(bin: &Path) -> Result<String, String> {
+    if !bin.is_file() { return Err(format!("{} doesn't exist", bin.display())) }
+    if !plausible_name(bin) { return Err("That file isn't named like whisper.cpp's program (whisper-cli). Choose whisper-cli (whisper-cli.exe on Windows).".into()) }
+    let dir = std::env::temp_dir().join(format!("sw_whisper_check_{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let (o, e) = (dir.join("o.txt"), dir.join("e.txt"));
+    let mut cmd = Command::new(bin);
+    cmd.arg("--help").stdin(std::process::Stdio::null());
+    if let (Ok(fo), Ok(fe)) = (std::fs::File::create(&o), std::fs::File::create(&e)) { cmd.stdout(fo).stderr(fe); }
+    hide_window(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| format!("couldn't run {}: {e}", bin.display()))?;
+    let t0 = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if t0.elapsed() < Duration::from_secs(10) => std::thread::sleep(Duration::from_millis(50)),
+            _ => { let _ = child.kill(); let _ = child.wait(); let _ = std::fs::remove_dir_all(&dir); return Err(format!("{} didn't answer within 10 seconds", bin.display())) }
         }
     }
-    // 2) PATH (plus Homebrew/MacPorts on macOS, like FFmpeg). Only the specific names here: whisper.cpp's old
-    //    generic `main` binary is accepted next to StreamWave, not from PATH, where `main` could be any program.
-    for d in crate::export::tool_dirs() {
-        for n in names.iter().filter(|n| !n.starts_with("main")) { let p = d.join(n); if p.is_file() { return Some(p) } }
+    let text = format!("{}{}", std::fs::read_to_string(&o).unwrap_or_default(), std::fs::read_to_string(&e).unwrap_or_default());
+    let _ = std::fs::remove_dir_all(&dir);
+    if text.contains("--output-json") { Ok(text.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string()) }
+    else if text.trim().is_empty() { Err(format!("{} started but printed nothing; it may be missing files it needs (keep it in its own folder with its .dll/.so files)", bin.display())) }
+    else { Err(format!("{} doesn't look like whisper.cpp's whisper-cli (its --help has no --output-json)", bin.display())) }
+}
+
+fn exe_dir() -> Option<PathBuf> { std::env::current_exe().ok().and_then(|m| m.parent().map(|d| d.to_path_buf())) }
+
+/// What the app knows: the chosen file (settings), StreamWave's own install, and the model chosen in settings.
+#[derive(Clone, Default)]
+pub struct Config { pub chosen: Option<PathBuf>, pub model: Option<PathBuf>, pub data_dir: Option<PathBuf> }
+
+impl Config {
+    fn managed_bin(&self) -> Option<PathBuf> { self.data_dir.as_ref().map(|d| crate::whisper_setup::bin_dir(d)) }
+    pub fn find(&self) -> Option<(PathBuf, Source)> {
+        let path_dirs = crate::export::tool_dirs();
+        let (mb, ed) = (self.managed_bin(), exe_dir());
+        resolve(&Locations { chosen: self.chosen.as_deref(), managed_bin: mb.as_deref(), exe_dir: ed.as_deref(), path_dirs: &path_dirs })
+    }
+    pub fn find_model(&self) -> Option<PathBuf> {
+        let managed = self.data_dir.as_ref().map(|d| crate::whisper_setup::models_dir(d));
+        find_model(self.model.as_deref(), managed.as_deref(), exe_dir().as_deref())
+    }
+}
+
+/// A ggml model: the chosen file, else one StreamWave downloaded, else any `ggml-*.bin` next to the exe.
+pub fn find_model(chosen: Option<&Path>, managed: Option<&Path>, exe_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(m) = chosen { if m.is_file() { return Some(m.to_path_buf()) } }
+    for dir in [managed, exe_dir].into_iter().flatten() {
+        let Ok(rd) = std::fs::read_dir(dir) else { continue };
+        let mut v: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| {
+            let n = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            n.starts_with("ggml-") && n.ends_with(".bin") && p.is_file()
+        }).collect();
+        v.sort();
+        if let Some(p) = v.into_iter().next() { return Some(p) }
     }
     None
 }
 
-/// A ggml model: explicit path, or any `ggml-*.bin` next to the exe.
-fn find_model(explicit: Option<&Path>) -> Option<PathBuf> {
-    if let Some(m) = explicit { if m.is_file() { return Some(m.to_path_buf()) } }
-    if let Ok(me) = std::env::current_exe() {
-        if let Some(dir) = me.parent() {
-            if let Ok(rd) = std::fs::read_dir(dir) {
-                for e in rd.flatten() {
-                    let n = e.file_name().to_string_lossy().to_string();
-                    if n.starts_with("ggml-") && n.ends_with(".bin") { return Some(e.path()) }
-                }
-            }
-        }
-    }
-    None
-}
-
-pub fn info(model: Option<&Path>) -> WhisperInfo {
-    match find_whisper() {
-        Some(p) => {
-            let m = find_model(model);
+pub fn info(cfg: &Config) -> WhisperInfo {
+    let managed = cfg.data_dir.as_ref().map(|d| crate::whisper_setup::bin_dir(d).join(cli_name()).is_file()).unwrap_or(false);
+    let path_added = cfg.data_dir.as_ref().map(|d| crate::whisper_setup::read_manifest(d).map(|m| m.path_added).unwrap_or(false)).unwrap_or(false);
+    let chosen_missing = cfg.chosen.as_ref().map(|c| !c.is_file()).unwrap_or(false);
+    let m = cfg.find_model();
+    let model_path = m.as_ref().map(|p| p.to_string_lossy().to_string());
+    match cfg.find() {
+        Some((p, source)) => {
             let message = if m.is_some() { "Whisper ready".into() } else {
-                "Whisper CLI found, but no model. Download a ggml model (e.g. ggml-base.en.bin) from huggingface.co/ggerganov/whisper.cpp and set it in Settings.".into() };
-            WhisperInfo { found: true, path: Some(p.to_string_lossy().into()), model_found: m.is_some(), message }
+                "whisper-cli is installed, but it needs a speech model (a ggml .bin file) to work.".into() };
+            WhisperInfo { found: true, path: Some(p.to_string_lossy().into()), source: Some(source), model_found: m.is_some(), model_path, message, managed, path_added, chosen_missing }
         }
-        None => WhisperInfo { found: false, path: None, model_found: false,
-            message: "whisper.cpp not found. Install it (winget install whisper.cpp, or build from source) and make sure whisper-cli is on PATH — then you can transcribe tracks here.".into() },
+        None => WhisperInfo { found: false, path: None, source: None, model_found: m.is_some(), model_path, managed, path_added, chosen_missing,
+            message: "whisper-cli wasn't found.".into() },
     }
 }
 
 /// Transcribe an audio file, returning timestamped segments (track-time seconds).
-pub fn transcribe(audio: &Path, model: Option<&Path>) -> anyhow::Result<Vec<Segment>> {
-    let bin = find_whisper().ok_or_else(|| anyhow::anyhow!("whisper.cpp not found — install whisper-cli and put it on PATH"))?;
-    let model = find_model(model).ok_or_else(|| anyhow::anyhow!("no Whisper model — download a ggml .bin (e.g. ggml-base.en.bin) and set it in Settings"))?;
+pub fn transcribe(audio: &Path, cfg: &Config) -> anyhow::Result<Vec<Segment>> {
+    let (bin, _) = cfg.find().ok_or_else(|| anyhow::anyhow!("whisper-cli wasn't found. Open the Transcript panel to set it up."))?;
+    let model = cfg.find_model().ok_or_else(|| anyhow::anyhow!("no Whisper model. Download one from the Transcript panel, or choose a ggml .bin in Settings"))?;
     let dir = std::env::temp_dir().join(format!("sw_whisper_{}", std::process::id()));
     std::fs::create_dir_all(&dir)?;
     let base = dir.join("out"); // whisper appends the extension
@@ -131,6 +213,72 @@ mod tests {
         assert_eq!(segs[2].end, 7.5);
         assert_eq!(segs[2].text, "again");
         assert!(parse_output_json("not json").is_empty());
+    }
+    fn touch(p: &Path) { std::fs::create_dir_all(p.parent().unwrap()).unwrap(); std::fs::write(p, b"x").unwrap(); }
+    #[test] fn resolution_order() {
+        let t = std::env::temp_dir().join(format!("sw_wres_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&t);
+        let (chosen_dir, managed, exe, p1, p2) = (t.join("chosen"), t.join("managed"), t.join("exe"), t.join("path1"), t.join("path2"));
+        let chosen = chosen_dir.join(cli_name());
+        let path_dirs = vec![p1.clone(), p2.clone()];
+        let loc = |c: Option<&Path>| -> Option<(PathBuf, Source)> {
+            resolve(&Locations { chosen: c, managed_bin: Some(&managed), exe_dir: Some(&exe), path_dirs: &path_dirs })
+        };
+        assert_eq!(loc(Some(&chosen)), None);
+        // PATH: only whisper-cli, never `main` or a bare `whisper`
+        let n = if cfg!(windows) { ["main.exe", "whisper.exe"] } else { ["main", "whisper"] };
+        for x in n { touch(&p1.join(x)) }
+        touch(&exe.join(n[0]));
+        assert_eq!(loc(None), None, "main / whisper are never picked up");
+        touch(&p2.join(cli_name()));
+        assert_eq!(loc(None), Some((p2.join(cli_name()), Source::Path)));
+        touch(&p1.join(cli_name()));
+        assert_eq!(loc(None), Some((p1.join(cli_name()), Source::Path)), "PATH order is kept");
+        touch(&exe.join(cli_name()));
+        assert_eq!(loc(None).unwrap().1, Source::Bundled);
+        touch(&managed.join(cli_name()));
+        assert_eq!(loc(None), Some((managed.join(cli_name()), Source::Managed)), "StreamWave's own copy beats PATH");
+        assert_eq!(loc(Some(&chosen)).unwrap().1, Source::Managed, "a chosen file that's gone falls through");
+        touch(&chosen);
+        assert_eq!(loc(Some(&chosen)), Some((chosen.clone(), Source::Settings)), "the user's choice comes first");
+        let bad = chosen_dir.join(if cfg!(windows) { "main.exe" } else { "main" }); touch(&bad);
+        assert_eq!(loc(Some(&bad)).unwrap().1, Source::Managed, "a chosen file named main is ignored");
+        let _ = std::fs::remove_dir_all(&t);
+    }
+    #[test] fn names() {
+        assert!(plausible_name(Path::new("/usr/bin/whisper-cli")));
+        assert!(plausible_name(Path::new("Whisper-CLI.EXE")));
+        assert!(plausible_name(Path::new("/opt/whisper-cpp")));
+        assert!(!plausible_name(Path::new("/usr/bin/main")));
+        assert!(!plausible_name(Path::new("/usr/bin/bash")));
+    }
+    #[test] fn model_order() {
+        let t = std::env::temp_dir().join(format!("sw_wmod_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&t);
+        let (m, e) = (t.join("models"), t.join("exe"));
+        assert_eq!(find_model(None, Some(&m), Some(&e)), None);
+        touch(&e.join("ggml-tiny.bin"));
+        assert_eq!(find_model(None, Some(&m), Some(&e)), Some(e.join("ggml-tiny.bin")));
+        touch(&m.join("ggml-base.en.bin")); touch(&m.join("notes.txt"));
+        assert_eq!(find_model(None, Some(&m), Some(&e)), Some(m.join("ggml-base.en.bin")));
+        let c = t.join("mine.bin"); touch(&c);
+        assert_eq!(find_model(Some(&c), Some(&m), Some(&e)), Some(c.clone()));
+        let _ = std::fs::remove_dir_all(&t);
+    }
+    #[cfg(unix)]
+    #[test] fn validates_a_chosen_cli() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = std::env::temp_dir().join(format!("sw_wval_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&t); std::fs::create_dir_all(&t).unwrap();
+        let mk = |name: &str, body: &str| { let p = t.join(name); std::fs::write(&p, body).unwrap(); std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap(); p };
+        let good = mk("whisper-cli", "#!/bin/sh\necho 'usage: whisper-cli [options] file0'\necho '  -oj, --output-json  output result in a JSON file' >&2\n");
+        assert_eq!(validate_cli(&good).unwrap(), "usage: whisper-cli [options] file0");
+        let py = mk("whisper", "#!/bin/sh\necho 'usage: whisper [-h] [--model MODEL] [--output_format {txt,json}] audio'\n");
+        assert!(validate_cli(&py).unwrap_err().contains("doesn't look like"));
+        let main = mk("main", "#!/bin/sh\necho --output-json\n");
+        assert!(validate_cli(&main).is_err(), "never runs a file called main");
+        assert!(validate_cli(&t.join("whisper-missing")).is_err());
+        let _ = std::fs::remove_dir_all(&t);
     }
     #[test] fn clock_parsing() {
         assert_eq!(clock_to_secs("00:01:23,456"), Some(83.456));

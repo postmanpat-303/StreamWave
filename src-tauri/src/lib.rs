@@ -13,6 +13,7 @@ mod settings;
 mod waveform;
 mod trim;
 mod whisper;
+mod whisper_setup;
 
 use audio::{devices, AudioHandle, Cmd};
 use parking_lot::Mutex;
@@ -21,11 +22,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{Emitter, Manager, State};
 
-struct AppState { audio: AudioHandle, settings: Mutex<Settings>, config_dir: PathBuf, default_rec_dir: PathBuf }
+struct AppState { audio: AudioHandle, settings: Mutex<Settings>, config_dir: PathBuf, default_rec_dir: PathBuf, data_dir: PathBuf }
 
 impl AppState {
     fn rec_dir(&self) -> PathBuf { self.settings.lock().record_dir.clone().map(PathBuf::from).unwrap_or_else(|| self.default_rec_dir.clone()) }
     fn save(&self) -> Result<(), String> { self.settings.lock().save(&self.config_dir).map_err(|e| e.to_string()) }
+    fn whisper_cfg(&self) -> whisper::Config {
+        let s = self.settings.lock();
+        whisper::Config { chosen: s.whisper_cli.clone().map(PathBuf::from), model: s.whisper_model.clone().map(PathBuf::from), data_dir: Some(self.data_dir.clone()) }
+    }
     fn send(&self, c: Cmd) -> Result<(), String> { self.audio.tx.send(c).map_err(|_| "audio engine stopped".to_string()) }
 }
 
@@ -63,7 +68,11 @@ fn set_latency(st: State<AppState>, profile: LatencyProfile, auto_backoff: bool)
     st.save()?; st.send(Cmd::SetLatency(profile, auto_backoff))
 }
 #[tauri::command]
-fn save_settings(st: State<AppState>, settings: Settings) -> Result<(), String> { *st.settings.lock() = settings; st.save() }
+fn save_settings(st: State<AppState>, mut settings: Settings) -> Result<(), String> {
+    // the chosen whisper-cli is owned by whisper_choose / whisper_forget_choice (it is validated there)
+    { let mut cur = st.settings.lock(); settings.whisper_cli = cur.whisper_cli.clone(); *cur = settings; }
+    st.save()
+}
 
 #[tauri::command] fn start_recording(st: State<AppState>) -> Result<(), String> { let d = st.rec_dir(); st.send(Cmd::StartRecord(d)) }
 #[tauri::command] fn pause_recording(st: State<AppState>, pause: bool) -> Result<(), String> { st.send(Cmd::PauseRecord(pause)) }
@@ -316,17 +325,85 @@ async fn detect_silence(cache: State<'_, render::DecodeCache>, clips: Vec<render
     tauri::async_runtime::spawn_blocking(move || Ok(trim::detect_silence(&d, threshold_db, min_ms, pad_ms))).await.map_err(|e| e.to_string())?
 }
 
-// ---- Whisper transcription (external whisper.cpp CLI, same pattern as FFmpeg) ----
+// ---- Whisper transcription (external whisper.cpp CLI, see whisper.rs / whisper_setup.rs) ----
 #[tauri::command]
-fn whisper_status(st: State<AppState>) -> whisper::WhisperInfo {
-    let m = st.settings.lock().whisper_model.clone().map(PathBuf::from);
-    whisper::info(m.as_deref())
-}
+fn whisper_status(st: State<AppState>) -> whisper::WhisperInfo { whisper::info(&st.whisper_cfg()) }
 #[tauri::command]
 async fn transcribe(st: State<'_, AppState>, path: String) -> Result<Vec<whisper::Segment>, String> {
-    let model = st.settings.lock().whisper_model.clone().map(PathBuf::from);
-    tauri::async_runtime::spawn_blocking(move || whisper::transcribe(std::path::Path::new(&path), model.as_deref()))
+    let cfg = st.whisper_cfg();
+    tauri::async_runtime::spawn_blocking(move || whisper::transcribe(std::path::Path::new(&path), &cfg))
         .await.map_err(|e| e.to_string())?.map_err(|e| e.to_string())
+}
+/// "I already have it": check the chosen file really is whisper.cpp's CLI, then remember it.
+#[tauri::command]
+async fn whisper_choose(st: State<'_, AppState>, path: String) -> Result<whisper::WhisperInfo, String> {
+    let p = PathBuf::from(&path);
+    let p2 = p.clone();
+    tauri::async_runtime::spawn_blocking(move || whisper::validate_cli(&p2)).await.map_err(|e| e.to_string())??;
+    st.settings.lock().whisper_cli = Some(p.to_string_lossy().into());
+    st.save()?;
+    Ok(whisper::info(&st.whisper_cfg()))
+}
+#[tauri::command]
+fn whisper_forget_choice(st: State<AppState>) -> Result<whisper::WhisperInfo, String> {
+    st.settings.lock().whisper_cli = None;
+    st.save()?;
+    Ok(whisper::info(&st.whisper_cfg()))
+}
+#[derive(serde::Serialize)]
+struct WhisperSetupInfo { os: String, arch: String, distro: whisper_setup::Distro, binary_asset: Option<String>, dest: String, models: Vec<(String, String, u64)> }
+#[tauri::command]
+fn whisper_setup_info(st: State<AppState>) -> WhisperSetupInfo {
+    let (os, arch) = whisper_setup::os_arch();
+    WhisperSetupInfo { os: os.into(), arch: arch.into(), distro: whisper_setup::distro(), binary_asset: whisper_setup::binary_asset(os, arch).map(|s| s.into()),
+        dest: whisper_setup::root(&st.data_dir).to_string_lossy().into(),
+        models: whisper_setup::MODELS.iter().map(|m| (m.0.to_string(), m.1.to_string(), m.2)).collect() }
+}
+#[tauri::command]
+async fn whisper_setup_plan(st: State<'_, AppState>, ss: State<'_, whisper_setup::SetupState>, need_binary: bool, model: Option<String>) -> Result<whisper_setup::Plan, String> {
+    let data = st.data_dir.clone();
+    let plan = whisper_setup::plan(&data, need_binary, model).await.map_err(|e| format!("Couldn't reach GitHub / Hugging Face to look up the downloads: {e}"))?;
+    *ss.plan.lock() = Some(plan.clone());
+    Ok(plan)
+}
+#[tauri::command]
+async fn whisper_setup_install(app: tauri::AppHandle, st: State<'_, AppState>, ss: State<'_, whisper_setup::SetupState>, add_path: bool) -> Result<whisper::WhisperInfo, String> {
+    use std::sync::atomic::Ordering;
+    let Some(plan) = ss.plan.lock().clone() else { return Err("nothing to set up; open the setup again".into()) };
+    if ss.running.swap(true, Ordering::SeqCst) { return Err("a setup is already running".into()) }
+    ss.cancel.store(false, Ordering::SeqCst);
+    let data = st.data_dir.clone();
+    let emit = move |p: whisper_setup::Progress| { let _ = app.emit("whisper-setup-progress", p); };
+    let r = whisper_setup::install(&data, &plan, add_path, &ss, &emit).await;
+    ss.running.store(false, Ordering::SeqCst);
+    match r {
+        Ok(_) => {
+            // a model chosen earlier that's gone shouldn't hide the one just downloaded
+            { let mut s = st.settings.lock(); if s.whisper_model.as_ref().is_some_and(|m| !std::path::Path::new(m).is_file()) { s.whisper_model = None } }
+            let _ = st.save();
+            Ok(whisper::info(&st.whisper_cfg()))
+        }
+        Err(e) if ss.cancel.load(Ordering::SeqCst) => { let _ = e; Err("cancelled".into()) }
+        Err(e) => Err(e.to_string()),
+    }
+}
+#[tauri::command]
+fn whisper_setup_cancel(ss: State<whisper_setup::SetupState>) { ss.cancel.store(true, std::sync::atomic::Ordering::SeqCst); }
+/// Remove StreamWave's own whisper.cpp copy (and its PATH entry). A file chosen by the user is left alone.
+#[tauri::command]
+fn whisper_remove(st: State<AppState>, ss: State<whisper_setup::SetupState>) -> Result<whisper::WhisperInfo, String> {
+    if ss.running.load(std::sync::atomic::Ordering::SeqCst) { return Err("a setup is running".into()) }
+    whisper_setup::remove(&st.data_dir).map_err(|e| e.to_string())?;
+    let root = whisper_setup::root(&st.data_dir);
+    { let mut s = st.settings.lock(); if s.whisper_model.as_ref().is_some_and(|m| std::path::Path::new(m).starts_with(&root)) { s.whisper_model = None } }
+    st.save()?;
+    Ok(whisper::info(&st.whisper_cfg()))
+}
+/// Open a terminal for the user to run an install command themselves (Linux: typed in, waiting for Enter).
+#[tauri::command]
+fn open_terminal(command: String) -> Result<whisper_setup::TerminalOpened, String> {
+    if command.len() > 600 || command.chars().any(|c| c.is_control()) { return Err("unexpected command".into()) }
+    whisper_setup::open_terminal(&command).map_err(|e| e.to_string())
 }
 
 /// Export the edited clip list to a new WAV file (originals untouched).
@@ -457,6 +534,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let config_dir = app.path().app_config_dir()?;
+            let data_dir = app.path().app_local_data_dir().unwrap_or_else(|_| config_dir.clone());
             let default_rec_dir = app.path().audio_dir().or_else(|_| app.path().document_dir()).unwrap_or_else(|_| config_dir.clone()).join("StreamWave");
             let settings = Settings::load(&config_dir);
             let rec_dir = settings.record_dir.clone().map(PathBuf::from).unwrap_or_else(|| default_rec_dir.clone());
@@ -466,7 +544,8 @@ pub fn run() {
             if let Some(vt) = &settings.voice_trigger {
                 let _ = audio.tx.send(Cmd::SetVoiceTrigger(Some(audio::VtCfg { threshold_db: vt.threshold_db, hold_ms: vt.hold_ms, dir: rec_dir.clone() })));
             }
-            app.manage(AppState { audio, settings: Mutex::new(settings), config_dir, default_rec_dir });
+            app.manage(AppState { audio, settings: Mutex::new(settings), config_dir, default_rec_dir, data_dir });
+            app.manage(whisper_setup::SetupState::default());
             app.manage(Arc::new(obs::ObsState::default()));
             app.manage(render::DecodeCache::default());
             app.manage(render::PlayCache::default());
@@ -506,7 +585,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             list_devices, list_hosts, get_settings, recordings_dir, install_kind, select_input, select_output, set_latency, save_settings,
-            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, update_play_clips, update_play_mix, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, perf_mark, perf_enabled, prepare_playback, release_project_audio, set_follow_playhead, prerender_clips, import_audio,
+            start_recording, stop_recording, play_file, play_clips, play_mix, update_fx, update_play_clips, update_play_mix, pause_playback, export_clips, learn_noise, measure_lufs, detect_silence, whisper_status, transcribe, whisper_choose, whisper_forget_choice, whisper_setup_info, whisper_setup_plan, whisper_setup_install, whisper_setup_cancel, whisper_remove, open_terminal, set_preroll, save_last, set_safety, set_voice_trigger, project_save, project_open, recent_projects, autosave_write, autosave_check, autosave_clear, ffmpeg_status, export_track, studio_sound, obs_split, import_aup3, render_selection, spectrogram, save_text_file, read_text_file, media_probe, send_to_video, pause_recording, obs_pause_record, stop_playback, perf_mark, perf_enabled, prepare_playback, release_project_audio, set_follow_playhead, prerender_clips, import_audio,
             obs_connect, obs_disconnect, obs_status, obs_start_record, obs_stop_record
         ])
         .run(tauri::generate_context!())
