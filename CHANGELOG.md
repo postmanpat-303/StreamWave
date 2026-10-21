@@ -2,7 +2,7 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
-## Unreleased
+## 0.11.2 (2026-10-21)
 
 ### Transcript setup
 - **The Transcript panel helps you set up whisper.cpp** instead of the old "whisper.cpp not found" message. That message also suggested `winget install whisper.cpp`, a package that doesn't exist. The panel now:

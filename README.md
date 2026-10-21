@@ -128,7 +128,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
 ### Linux (x86_64)
-Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.1`):
+Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.2`):
 
 | Distro | File | Install |
 |---|---|---|
@@ -189,6 +189,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
 - [ ] Multi-track mixdown export, free overlapping clips (3+ stacked), a master/output effect bus
 - [x] Follow playhead, near-instant Play/Stop, stop playback when switching projects (0.11.1)
+- [x] whisper.cpp setup in the Transcript panel: install command with Copy, Open terminal, "Set it up for me", "I already have it" (0.11.2)
 - [x] Hardware-style look, timeline ruler, selected-audio preview, Effects Layer workspace, crossfades (0.11.0)
 - [x] Multi-file import arrangement, clip moving across tracks, per-clip Layering Effects (0.10.0)
 - [x] In-app update check (0.6.0)
