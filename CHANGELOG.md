@@ -2,6 +2,23 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.11.2 (2026-10-21)
+
+### Transcript setup
+- **The Transcript panel helps you set up whisper.cpp** instead of the old "whisper.cpp not found" message. That message also suggested `winget install whisper.cpp`, a package that doesn't exist. The panel now:
+  - explains what whisper-cli is and what "on PATH" means;
+  - shows the right install command for your system with a **Copy** button: `scoop install whisper-cpp` on Windows, `brew install whisper.cpp` on Mac, `pacman`/`apt` on distros that package it, or building from source;
+  - has **Open terminal**: on Linux the command is typed in for you to run; on Windows and Mac it is copied for pasting. Nothing runs until you press Enter.
+- **Set it up for me** (Windows and Linux): downloads the official whisper.cpp build from the ggml-org/whisper.cpp GitHub releases and a speech model from Hugging Face. A confirm dialog lists the files, where they come from and their sizes, and lets you pick the model. You get progress and Cancel. Files are checked by sha256 and size, then installed into StreamWave's own folder and used from there, so no PATH change is needed. On Windows you can optionally add that folder to your user PATH. **Remove** undoes everything.
+- **I already have it…**: choose whisper-cli yourself (checked before it's saved), then **Check again**.
+- Safer lookup. In order:
+  1. the file you chose;
+  2. StreamWave's copy;
+  3. `whisper-cli` next to the app;
+  4. `whisper-cli` on PATH.
+
+  A generic `main` or bare `whisper` program is never run. Downloads only go over HTTPS to GitHub and Hugging Face, and redirects are checked too.
+
 ## 0.11.1 (2026-10-20)
 
 ### Fixed

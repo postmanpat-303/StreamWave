@@ -38,6 +38,8 @@ pub struct Settings {
     pub voice_trigger: Option<VoiceTrigger>,
     /// Path to a whisper.cpp ggml model for transcription (None = look next to the exe).
     pub whisper_model: Option<String>,
+    /// whisper-cli the user chose ("I already have it"); tried before StreamWave's own copy and PATH
+    pub whisper_cli: Option<String>,
     /// first-run setup finished or skipped
     pub onboarded: bool,
     /// quiet update check at startup (at most once a day)

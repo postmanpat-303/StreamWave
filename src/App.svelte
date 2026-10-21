@@ -28,6 +28,8 @@
   import { defaultFx, FX_NAMES, type Effect, type EffectType } from "./lib/fx";
   import { parseSpec, type Spec } from "./lib/spectrogram";
   import ObsPanel from "./lib/ObsPanel.svelte";
+  import WhisperSetup from "./lib/WhisperSetup.svelte";
+  import { sourceLabel, type WhisperInfo } from "./lib/whisperSetup";
   import FxPanel from "./lib/FxPanel.svelte";
   import ExportPanel from "./lib/ExportPanel.svelte";
   import StudioPanel from "./lib/StudioPanel.svelte";
@@ -978,7 +980,12 @@
   }
 
   // ---- Whisper transcription ----
-  let whisper = $state<{ found: boolean; path: string | null; model_found: boolean; message: string } | null>(null);
+  let whisper = $state<WhisperInfo | null>(null);
+  /** the setup panel changed something: show it, and pick up settings the backend changed (model path, chosen CLI) */
+  async function whisperChanged(i: WhisperInfo) {
+    whisper = i;
+    try { const s = await api.getSettings(); settings.whisper_model = s.whisper_model; settings.whisper_cli = s.whisper_cli; } catch {}
+  }
   let segments = $state<{ start: number; end: number; text: string }[]>([]);
   let segmentsTrack = $state<number | null>(null);
   let transcribing = $state(false);
@@ -1011,6 +1018,11 @@
     if (level.playing) await api.stopPlayback();
     playingId = t.id; playOffset = 0; playRange = null;
     try { await api.playClips(clipsFor(t.clips), fxFor(t), s.start); } catch (e) { toast(String(e), "err"); }
+  }
+  async function pickWhisperCli() {
+    const p = await open({ title: "Choose whisper-cli", multiple: false, directory: false });
+    if (!p || Array.isArray(p)) return;
+    try { await whisperChanged(await api.whisperChoose(p)); toast("Using the whisper-cli you chose"); } catch (e) { toast(String(e), "err"); }
   }
   async function pickWhisperModel() {
     const p = await open({ filters: [{ name: "Whisper model", extensions: ["bin"] }] });
@@ -1438,14 +1450,10 @@
       {#if activeTrack()}
         <div class="panel">
           <h3>Transcript</h3>
-          {#if whisper && !whisper.found}
-            <div class="small">{whisper.message}</div>
-          {:else if whisper && !whisper.model_found}
-            <div class="small">{whisper.message}</div>
-            <button class="small" onclick={pickWhisperModel}>Choose model…</button>
-          {:else}
+          {#if whisper?.found && whisper.model_found}
             <button class="small" onclick={transcribe} disabled={transcribing}>{transcribing ? "Transcribing…" : "Transcribe track"}</button>
           {/if}
+          {#if whisper}<WhisperSetup info={whisper} onchange={whisperChanged} {toast} />{/if}
           {#if segments.length && segmentsTrack === activeTrack()?.id}
             <div class="segs">
               {#each segments as s (s.start)}
@@ -1505,8 +1513,10 @@
             <option value={-16}>-16 LUFS · Podcast / Apple Podcasts</option>
             <option value={-23}>-23 LUFS · Broadcast (EBU R128)</option>
           </select>
+          <label for="wcli">whisper-cli (for transcription)</label>
+          <div class="row2"><input id="wcli" readonly value={whisper?.found ? `${whisper.path} (${sourceLabel(whisper.source)})` : "not found: see the Transcript panel"} title={whisper?.path ?? ""} /><button onclick={pickWhisperCli}>Browse…</button></div>
           <label for="wmodel">Whisper model (ggml .bin, for transcription)</label>
-          <div class="row2"><input id="wmodel" bind:value={settings.whisper_model} placeholder="auto-detect next to the app" onchange={() => api.saveSettings(settings)} /><button onclick={pickWhisperModel}>Browse…</button></div>
+          <div class="row2"><input id="wmodel" bind:value={settings.whisper_model} placeholder="auto: the model StreamWave downloaded, or one next to the app" onchange={() => api.saveSettings(settings)} /><button onclick={pickWhisperModel}>Browse…</button></div>
         </div>
       {/if}
     </aside>

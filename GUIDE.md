@@ -124,10 +124,36 @@ WAV is written by StreamWave itself. All other formats use **FFmpeg**, which Str
 - **The mic is never taken exclusively**: WASAPI is always opened in shared mode. On Linux, only shared sound-server routes are listed (default / PulseAudio / PipeWire / JACK); raw `hw:` devices that would lock the card are hidden. OBS, Discord and other apps keep working with the same mic, buffer included. (ASIO drivers are usually single-client by design, which is why ASIO is an optional build feature.)
 
 ## Transcription (Whisper)
-The **Transcript** panel transcribes the active track's first source file with an external **whisper.cpp** CLI — nothing AI is bundled:
-1. Install whisper.cpp so that `whisper-cli` (or `whisper`) is on `PATH` (on Mac, `brew install whisper-cpp` works; Homebrew and MacPorts folders are searched too), or place the executable next to StreamWave (an old `main` binary is only used from there).
-2. Download a ggml model (e.g. `ggml-base.en.bin`) from https://huggingface.co/ggerganov/whisper.cpp and set its path in **Settings → Whisper model** (if it's named `ggml-*.bin` and sits next to the app, it's found automatically).
-3. **Transcribe track** → click any line to play from that moment.
+The **Transcript** panel transcribes the active track's first source file with **whisper-cli**, the free speech-to-text program from the [whisper.cpp](https://github.com/ggml-org/whisper.cpp) project, plus a ggml speech model. It runs on your computer, nothing is uploaded, and neither is bundled with StreamWave.
+
+If whisper-cli isn't found, the panel walks you through setting it up. "On PATH" just means your computer looks for programs in a list of folders called PATH; whisper-cli has to be in one of them, or StreamWave has to know exactly where it is.
+
+**Set it up for me** (Windows and Linux, x64 and ARM64) is the easy way:
+1. Press **Set it up for me**. A dialog lists exactly what will be downloaded and from where, with each file's size and checksum: the official whisper.cpp build for your system from the ggml-org/whisper.cpp GitHub releases (about 9–10 MB) and a speech model from huggingface.co/ggerganov/whisper.cpp. You can pick the model: *Base, English only* (recommended, 141 MB), *Base, many languages* (141 MB) or *Tiny, English only* (74 MB, faster but less accurate).
+2. Press **Download & set up**. A progress bar shows each step, and **Cancel** (or Esc) stops it and deletes the unfinished download. Both files are checked against their published sha256 and size, the program has to unpack cleanly and run, and only then are they moved into StreamWave's own folder (`whisper` in StreamWave's app-data folder, e.g. `%LOCALAPPDATA%\com.del.streamwave\whisper` on Windows or `~/.local/share/com.del.streamwave/whisper` on Linux). No admin rights are needed.
+3. The panel switches straight to **Transcribe track**. StreamWave runs that copy from its folder, so your PATH isn't changed. On Windows you can tick **Also add to my PATH so other apps can use it**: this adds the folder to your user PATH (no admin), and apps opened afterwards will see it.
+4. **Remove** (under the Transcribe button) deletes StreamWave's whisper folder and undoes the PATH change. Files you installed yourself are never touched.
+
+**Install it yourself.** The panel shows the right command for your system in a box with a **Copy** button:
+
+| System | Command | Notes |
+|---|---|---|
+| Windows | `scoop install whisper-cpp` | winget has **no** whisper.cpp package, so `winget install whisper.cpp` doesn't work. Scoop's main bucket installs the official build and puts whisper-cli on PATH. No Scoop? Use *Set it up for me*. |
+| macOS | `brew install whisper.cpp` | whisper.cpp doesn't publish a ready-made Mac program. Homebrew's folders are searched automatically. *Set it up for me* can still download the speech model. |
+| Arch, Manjaro | `sudo pacman -S whisper-cpp` | From the extra repository. |
+| Debian 14 / unstable, Ubuntu 26.04+ | `sudo apt install whisper.cpp-tools` | Older Debian and Ubuntu releases don't have it yet. |
+| Fedora, others | build from source (below) or *Set it up for me* | Fedora's `whisper-cpp` package only has the library, not whisper-cli. |
+| Anywhere | `git clone --depth 1 https://github.com/ggml-org/whisper.cpp && cmake -S whisper.cpp -B whisper.cpp/build && cmake --build whisper.cpp/build -j --config Release` | Needs git, cmake and a C++ compiler; the program is `whisper.cpp/build/bin/whisper-cli`. |
+
+**Open terminal** opens a terminal for you. On Linux the command is typed in ready to go: check it and press Enter to run it, or Ctrl+C to cancel. It tries your desktop's terminal, then `x-terminal-emulator`, GNOME Terminal, Konsole, Xfce Terminal, kitty, Alacritty, Ptyxis and xterm. On Windows (PowerShell) and Mac (Terminal), a prompt can't be filled in without running the command, so the terminal opens empty, the command is copied, and you paste it (right-click/Ctrl+V on Windows, ⌘V on Mac). Nothing ever runs unless you press Enter. After installing, press **Check again**; if it still isn't found, restart StreamWave so it sees the new PATH.
+
+**I already have it…** lets you pick the whisper-cli file yourself (also under **Settings → whisper-cli → Browse…**). StreamWave checks it really is whisper.cpp's whisper-cli before saving it. **Forget** (under the Transcribe button) clears the choice.
+
+Which whisper-cli is used, in order: the file you chose, then StreamWave's own copy, then `whisper-cli` next to the StreamWave program, then `whisper-cli` on PATH (on Mac, Homebrew and MacPorts folders too). Only `whisper-cli` is looked up automatically: never an old generic `main` program, and not a bare `whisper`, which is usually OpenAI's Python tool and takes different options.
+
+The speech model: *Set it up for me* downloads one. Otherwise, download a ggml model (e.g. `ggml-base.en.bin`) from https://huggingface.co/ggerganov/whisper.cpp and choose it with **Choose model file…** in the panel or **Settings → Whisper model**. A `ggml-*.bin` next to the app is also found automatically.
+
+Then press **Transcribe track** and click any line to play from that moment.
 
 ## Feeding OBS / Discord / Zoom from StreamWave
 StreamWave can't install audio drivers itself, but virtual audio cables work today:

@@ -75,7 +75,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 | 🎚 **Per-clip gain & fades** *(new in 0.9.0)* | Give the selected clips their own gain and fade in/out, non-destructively: duck music under a voiceover, smooth punch-ins, level a rant across takes. |
 | 📤 **Batch export** *(new in 0.9.0)* | Export every track as a 24-bit WAV into one folder in a single pass, each brought to −14, −16 or −23 LUFS. |
 | ▶️ **Mixdown playback** *(new in 0.9.0)* | **▶ Mix all** plays every track together with its effects, so you can hear the whole project. Export is still one track at a time. |
-| 📝 **Whisper transcription** *(new in 0.9.0)* | Transcribe a track on your own computer with whisper.cpp and any ggml model (not bundled), then click a line to play from there. No cloud. |
+| 📝 **Whisper transcription** *(new in 0.9.0)* | Transcribe a track on your own computer with whisper.cpp and any ggml model, then click a line to play from there. No cloud. The Transcript panel can set whisper.cpp up for you (official download, checked) or shows the install command for your system. |
 | 📥 **Multi-file import** *(new in 0.10.0)* | Import or drop several files at once and choose: **one after another on one track** (each starting exactly where the last ends, at the cursor or 0:00) or **one track per file**, all lined up. Mixed formats and sample rates are fine, Cancel changes nothing, and one Ctrl+Z undoes it all. |
 | ↔️ **Move clips** *(new in 0.10.0)* | Drag a clip by its title bar along the timeline or onto another track, even past the end. Ghost, target highlight and exact time readout while dragging; snaps to markers, clip edges and the cursor (Alt = free). Overlapping audio is refused. Positions are whole samples, so nothing drifts. |
 | ◧ **Layering Effects** *(new in 0.10.0)* | Give a single clip its own stack of effects: add, bypass, edit and drag (or Alt+↑/↓) to reorder. The list order is the processing order, running before the clip's gain/fades and the track effects. Each clip owns its stack; copies and split pieces get their own. Heard live, exported identically. |
@@ -128,7 +128,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
 ### Linux (x86_64)
-Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.1`):
+Pick the package for your distro from the [latest release](https://github.com/postmanpat-303/StreamWave/releases/latest) (`<version>` is e.g. `0.11.2`):
 
 | Distro | File | Install |
 |---|---|---|
@@ -189,6 +189,7 @@ Optional cargo features: `asio` (Steinberg ASIO on Windows) and `jack` (Linux). 
 - [ ] **VST3 / CLAP plugin hosting**: use your favourite plugins in the live chain
 - [ ] Multi-track mixdown export, free overlapping clips (3+ stacked), a master/output effect bus
 - [x] Follow playhead, near-instant Play/Stop, stop playback when switching projects (0.11.1)
+- [x] whisper.cpp setup in the Transcript panel: install command with Copy, Open terminal, "Set it up for me", "I already have it" (0.11.2)
 - [x] Hardware-style look, timeline ruler, selected-audio preview, Effects Layer workspace, crossfades (0.11.0)
 - [x] Multi-file import arrangement, clip moving across tracks, per-clip Layering Effects (0.10.0)
 - [x] In-app update check (0.6.0)

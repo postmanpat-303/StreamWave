@@ -4288,25 +4288,30 @@ checksum = "ff7589a1859b09232522bb9edf076ca7fcf14ded96685d3fa629db73023ffbb7"
 
 [[package]]
 name = "streamwave"
-version = "0.11.1"
+version = "0.11.2"
 dependencies = [
  "anyhow",
  "chrono",
  "cpal",
  "ebur128",
+ "flate2",
  "futures-util",
  "hound",
  "log",
  "nnnoiseless",
  "obws",
  "parking_lot",
+ "reqwest",
  "rtrb",
  "rubato",
  "rusqlite",
  "rustfft",
+ "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "symphonia",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-clipboard-manager",
@@ -4315,6 +4320,9 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tokio",
+ "windows-sys 0.61.2",
+ "winreg",
+ "zip",
 ]
 
 [[package]]
@@ -6702,6 +6710,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
 ]
