@@ -124,7 +124,7 @@ Most audio editors were designed for studios twenty years ago. StreamWave is bui
 
 ### Windows 10/11
 1. Download **`StreamWave_<version>_x64-setup.exe`** from [Releases](https://github.com/postmanpat-303/StreamWave/releases/latest).
-2. Run it. No admin rights are needed; it installs for your user only. FFmpeg is included.
+2. Run it. It installs for everyone on the PC, so Windows asks for an administrator password. FFmpeg is included. Upgrades from the older per-user install move to Program Files on their own.
 3. **SmartScreen:** the installer isn't code-signed yet, so Windows may say *"Windows protected your PC"*. Click **More info → Run anyway**.
 
 ### Linux (x86_64)

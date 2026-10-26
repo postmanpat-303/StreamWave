@@ -2,6 +2,12 @@
 
 All notable changes to StreamWave are documented here. The format is loosely based on [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Windows installer
+- **Installs for everyone.** The Windows setup now installs into Program Files\StreamWave, for all users on the PC, instead of %LOCALAPPDATA%\StreamWave for one user, matching BigWave Radio and ChipWave Studio. Windows asks for an administrator password, and in-app updates ask for the same confirmation.
+- Upgrading from an older per-user install removes that copy and its Add/Remove Programs entry, so there is one StreamWave. Settings, presets and recordings live outside the program folder and are kept.
+
 ## 0.11.2 (2026-10-21)
 
 ### Transcript setup

@@ -13,7 +13,7 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser",
+        "installMode": "perMachine",
         "compression": "lzma",
         "installerIcon": "icons/icon.ico",
         "headerImage": "installer/header.bmp",

@@ -45,7 +45,7 @@
         "silent": true
       },
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "perMachine"
       }
     },
     "publisher": "Del (postmanpat)",

@@ -3,8 +3,8 @@
 Tick each box. If something fails, note what you did and copy any red toast text.
 
 ## 0. Install / first run
-- [ ] Build or install (README "Windows"). The installer runs per-user; WebView2 is fetched automatically if missing.
-- [ ] Upgrading over an older version (via Help → Check for updates, or by running the new installer): it installs into the same folder, and Settings → Apps / Add or Remove Programs shows **one** StreamWave entry with Publisher "Del (postmanpat)".
+- [ ] Build or install (README "Windows"). The installer runs per-machine, into Program Files (Windows asks for an administrator password); WebView2 is fetched automatically if missing.
+- [ ] Upgrading over an older version (via Help → Check for updates, or by running the new installer): it installs into the same folder (an older per-user copy in %LOCALAPPDATA%\StreamWave is removed), and Settings → Apps / Add or Remove Programs shows **one** StreamWave entry with Publisher "Del (postmanpat)".
 - [ ] First launch shows the **Welcome** card: pick your mic and watch the meter move when you talk.
 - [ ] Step 2: enter the OBS WebSocket password, click "Test connection". You should see "Connected to OBS x.y".
 - [ ] Step 3 shows whether FFmpeg was found. If not, `winget install Gyan.FFmpeg`, restart the app, and it should say found.
